@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>标签编辑打印工具</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #1a1f2a;
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+      .splash {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background:
+          radial-gradient(ellipse at 50% 20%, rgba(255, 122, 26, 0.22), transparent 55%),
+          linear-gradient(165deg, #222833 0%, #151922 100%);
+        color: #f4f6f8;
+      }
+      .mark {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        background: linear-gradient(145deg, #ff9a4a, #ff7a1a 55%, #ef6c0c);
+        box-shadow: 0 10px 28px rgba(255, 122, 26, 0.35);
+        display: grid;
+        place-items: center;
+      }
+      .mark svg {
+        width: 28px;
+        height: 28px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: 0.04em;
+      }
+      p {
+        margin: 0;
+        font-size: 12px;
+        color: rgba(244, 246, 248, 0.62);
+      }
+      .bar {
+        width: 148px;
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        width: 40%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, transparent, #ff7a1a, transparent);
+        animation: slide 1.1s ease-in-out infinite;
+      }
+      @keyframes slide {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(320%); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="splash">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 7h10v10H7z" />
+          <path d="M3 7h2M3 12h2M3 17h2M19 7h2M19 12h2M19 17h2M7 3v2M12 3v2M17 3v2M7 19v2M12 19v2M17 19v2" />
+        </svg>
+      </div>
+      <h1>标签编辑打印</h1>
+      <p>正在启动…</p>
+      <div class="bar"><i></i></div>
+    </div>
+  </body>
+</html>
