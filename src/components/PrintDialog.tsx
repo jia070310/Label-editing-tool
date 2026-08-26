@@ -83,7 +83,11 @@ export function PrintDialog({ open, sheet, settings, onClose }: Props) {
         silent: false,
       })
     } catch (e) {
-      setError(e instanceof Error ? e.message : '唤起打印失败，请重试')
+      const msg = e instanceof Error ? e.message : '唤起打印失败，请重试'
+      setError(msg)
+      void import('../utils/feedback').then(({ reportClientError }) =>
+        reportClientError(e, { kind: 'print-dialog', deviceName, dpi }),
+      )
     } finally {
       setPrinting(false)
     }
@@ -169,7 +173,20 @@ export function PrintDialog({ open, sheet, settings, onClose }: Props) {
               ? ' Windows 使用物理尺寸直打，不再「适应页面」。'
               : ' 请使用桌面版打印（npm run desktop）。'}
           </p>
-          {error && <p className="form-error">{error}</p>}
+          {error && (
+            <div className="form-error print-error-block">
+              <p>{error}</p>
+              {desktop && (
+                <button
+                  type="button"
+                  className="btn-secondary print-log-btn"
+                  onClick={() => window.electronAPI?.exportFeedbackLog?.()}
+                >
+                  导出反馈日志
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="modal-footer print-dialog-footer">

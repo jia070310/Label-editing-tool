@@ -1,9 +1,10 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
 const { spawn } = require('child_process')
 
+const APP_DISPLAY_NAME = '柠檬标签工具'
 const isDev = !app.isPackaged
 const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173'
 
@@ -65,7 +66,7 @@ function createWindow() {
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: '标签编辑打印工具',
+    title: APP_DISPLAY_NAME,
     show: false,
     backgroundColor: '#151922',
     autoHideMenuBar: true,
@@ -90,6 +91,7 @@ function createWindow() {
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error('页面加载失败', code, desc, url)
+    appendAppLog('did-fail-load', { code, desc, url })
     if (isDev && mainWindow && !mainWindow.isDestroyed()) {
       setTimeout(() => {
         mainWindow?.loadURL(devServerUrl).catch(() => {})
@@ -118,6 +120,159 @@ function createWindow() {
   })
 }
 
+function getPrintWorkDir() {
+  const dir = path.join(os.tmpdir(), 'lemon-label-tool')
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+function getLegacyPrintWorkDir() {
+  return path.join(os.tmpdir(), 'label-print-editor')
+}
+
+function getLogDir() {
+  try {
+    if (app.isReady()) {
+      const dir = path.join(app.getPath('userData'), 'logs')
+      fs.mkdirSync(dir, { recursive: true })
+      return dir
+    }
+  } catch {
+    /* ignore */
+  }
+  return getPrintWorkDir()
+}
+
+function getPrintLogPath() {
+  return path.join(getPrintWorkDir(), 'print.log')
+}
+
+function getAppLogPath() {
+  return path.join(getLogDir(), 'app.log')
+}
+
+function appendAppLog(message, extra) {
+  const line = `[${new Date().toISOString()}] ${message}`
+  const block =
+    extra === undefined
+      ? `${line}\n`
+      : `${line}\n${typeof extra === 'string' ? extra : JSON.stringify(extra, null, 2)}\n`
+  try {
+    fs.appendFileSync(getAppLogPath(), block, 'utf8')
+  } catch (err) {
+    console.error('[app-log]', err)
+  }
+  console.log('[app]', message, extra ?? '')
+}
+
+function appendPrintLog(message, extra) {
+  const line = `[${new Date().toISOString()}] ${message}`
+  const block =
+    extra === undefined
+      ? `${line}\n`
+      : `${line}\n${typeof extra === 'string' ? extra : JSON.stringify(extra, null, 2)}\n`
+  try {
+    fs.appendFileSync(getPrintLogPath(), block, 'utf8')
+  } catch (err) {
+    console.error('[print-log]', err)
+  }
+  try {
+    fs.appendFileSync(getAppLogPath(), `[print] ${block}`, 'utf8')
+  } catch {
+    /* ignore */
+  }
+  console.log('[print]', message, extra ?? '')
+}
+
+function readTail(filePath, maxBytes = 120_000) {
+  try {
+    if (!fs.existsSync(filePath)) return '(无)'
+    const stat = fs.statSync(filePath)
+    if (stat.size <= maxBytes) return fs.readFileSync(filePath, 'utf8')
+    const fd = fs.openSync(filePath, 'r')
+    try {
+      const buf = Buffer.alloc(maxBytes)
+      fs.readSync(fd, buf, 0, maxBytes, Math.max(0, stat.size - maxBytes))
+      return `...(已截断较早内容)\n${buf.toString('utf8')}`
+    } finally {
+      fs.closeSync(fd)
+    }
+  } catch (err) {
+    return `(读取失败: ${err.message})`
+  }
+}
+
+async function collectPrinterSummary() {
+  if (!mainWindow) return []
+  try {
+    const list = await mainWindow.webContents.getPrintersAsync()
+    return (list || []).map((p) => ({
+      name: p.name,
+      displayName: p.displayName,
+      isDefault: p.isDefault,
+      status: p.status,
+    }))
+  } catch (err) {
+    return [{ error: err.message }]
+  }
+}
+
+async function exportFeedbackBundle() {
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, '-')
+    .slice(0, 19)
+  const defaultName = `柠檬标签工具-反馈日志-${stamp}.txt`
+  const { canceled, filePath } = await dialog.showSaveDialog(
+    mainWindow || undefined,
+    {
+      title: '导出反馈日志',
+      defaultPath: path.join(app.getPath('desktop'), defaultName),
+      filters: [{ name: '文本日志', extensions: ['txt'] }],
+    },
+  )
+  if (canceled || !filePath) {
+    return { ok: false, cancelled: true }
+  }
+
+  const printers = await collectPrinterSummary()
+  const legacyPrintLog = path.join(getLegacyPrintWorkDir(), 'print.log')
+  const body = [
+    `=== ${APP_DISPLAY_NAME} · 反馈日志（仅本机导出，不联网） ===`,
+    `导出时间: ${new Date().toLocaleString('zh-CN')}`,
+    `应用版本: ${app.getVersion()}`,
+    `打包状态: ${app.isPackaged ? 'installed' : 'dev'}`,
+    `系统: ${os.type()} ${os.release()} (${os.arch()})`,
+    `用户名: ${os.userInfo().username}`,
+    `临时目录: ${getPrintWorkDir()}`,
+    `日志目录: ${getLogDir()}`,
+    '',
+    '--- 打印机列表 ---',
+    JSON.stringify(printers, null, 2),
+    '',
+    '--- 应用日志 (app.log) ---',
+    readTail(getAppLogPath()),
+    '',
+    '--- 打印日志 (print.log) ---',
+    readTail(getPrintLogPath()),
+    '',
+    '--- 旧版打印日志 (兼容) ---',
+    readTail(legacyPrintLog),
+    '',
+    '=== 结束 ===',
+    '',
+  ].join('\n')
+
+  fs.writeFileSync(filePath, body, 'utf8')
+  appendAppLog('feedback exported', { filePath })
+  try {
+    shell.showItemInFolder(filePath)
+  } catch {
+    /* ignore */
+  }
+  return { ok: true, path: filePath }
+}
+
 function dataUrlToPngFile(dataUrl, filePath) {
   const m = /^data:image\/\w+;base64,(.+)$/.exec(dataUrl)
   if (!m) throw new Error('无效的标签图像')
@@ -129,8 +284,17 @@ param(
   [Parameter(Mandatory=$true)][string]$ImagePath,
   [Parameter(Mandatory=$true)][string]$PrinterName,
   [Parameter(Mandatory=$true)][double]$WidthMm,
-  [Parameter(Mandatory=$true)][double]$HeightMm
+  [Parameter(Mandatory=$true)][double]$HeightMm,
+  [string]$LogPath = ""
 )
+
+function Write-PrintLog([string]$Message) {
+  $line = "$(Get-Date -Format o) [PS] $Message"
+  Write-Output $line
+  if ($LogPath) {
+    try { Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8 } catch {}
+  }
+}
 
 Add-Type -AssemblyName System.Drawing
 
@@ -139,56 +303,135 @@ $hHundredths = [int][Math]::Round($HeightMm / 25.4 * 100)
 if ($wHundredths -lt 1) { $wHundredths = 1 }
 if ($hHundredths -lt 1) { $hHundredths = 1 }
 
+Write-PrintLog ("start printer='{0}' sizeMm={1}x{2} hundredths={3}x{4}" -f $PrinterName, $WidthMm, $HeightMm, $wHundredths, $hHundredths)
+Write-PrintLog "image='$ImagePath' exists=$([IO.File]::Exists($ImagePath))"
+
 $img = $null
 $doc = $null
 try {
   $img = [System.Drawing.Image]::FromFile($ImagePath)
+  Write-PrintLog ("image loaded {0}x{1}" -f $img.Width, $img.Height)
+
   $doc = New-Object System.Drawing.Printing.PrintDocument
   $doc.DocumentName = "LabelPrint"
   $doc.PrinterSettings.PrinterName = $PrinterName
+  Write-PrintLog "printer IsValid=$($doc.PrinterSettings.IsValid) status=$($doc.PrinterSettings.PrinterStatus)"
 
   if (-not $doc.PrinterSettings.IsValid) {
     throw "Invalid printer: $PrinterName"
   }
 
   $paper = $null
+  $paperSource = "none"
   foreach ($ps in $doc.PrinterSettings.PaperSizes) {
     if ([Math]::Abs($ps.Width - $wHundredths) -le 8 -and [Math]::Abs($ps.Height - $hHundredths) -le 8) {
       $paper = $ps
+      $paperSource = "driver:$($ps.PaperName)"
       break
     }
   }
   if ($null -eq $paper) {
     $paper = New-Object System.Drawing.Printing.PaperSize("LabelCustom", $wHundredths, $hHundredths)
+    try { $paper.RawKind = 256 } catch {}
+    $paperSource = "custom"
   }
-  $doc.DefaultPageSettings.PaperSize = $paper
+  Write-PrintLog "paper source=$paperSource kind=$($paper.Kind) raw=$($paper.RawKind) size=$($paper.Width)x$($paper.Height)"
+
+  try {
+    $doc.DefaultPageSettings.PaperSize = $paper
+  } catch {
+    Write-PrintLog "set custom paper failed: $($_.Exception.Message); fallback to default paper"
+    $paper = $doc.DefaultPageSettings.PaperSize
+  }
   $doc.DefaultPageSettings.Landscape = $false
   $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
   $doc.OriginAtMargins = $false
 
-  # 用 Hashtable 记录渲染状态；$script:printed 在 PrintPage 回调里可能无法回写
-  $renderState = @{ Done = $false }
+  $renderState = @{ Done = $false; Bounds = ""; Error = "" }
   $doc.add_PrintPage({
     param($sender, $e)
-    $bounds = $e.PageBounds
-    if ($bounds.Width -lt 1 -or $bounds.Height -lt 1) {
-      $bounds = New-Object System.Drawing.Rectangle(0, 0, $wHundredths, $hHundredths)
+    try {
+      $bounds = $e.PageBounds
+      if ($bounds.Width -lt 1 -or $bounds.Height -lt 1) {
+        $bounds = New-Object System.Drawing.Rectangle(0, 0, $wHundredths, $hHundredths)
+      }
+      $renderState.Bounds = "$($bounds.X),$($bounds.Y) $($bounds.Width)x$($bounds.Height)"
+      $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+      $e.Graphics.DrawImage($img, $bounds)
+      $e.HasMorePages = $false
+      $renderState.Done = $true
+    } catch {
+      $renderState.Error = $_.Exception.Message
+      throw
     }
-    $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
-    $e.Graphics.DrawImage($img, $bounds)
-    $e.HasMorePages = $false
-    $renderState.Done = $true
   }.GetNewClosure())
 
+  $doc.add_QueryPageSettings({
+    param($sender, $e)
+    Write-PrintLog "QueryPageSettings paper=$($e.PageSettings.PaperSize.Width)x$($e.PageSettings.PaperSize.Height)"
+  }.GetNewClosure())
+
+  Write-PrintLog "calling Print()"
   $doc.Print()
+  Write-PrintLog "Print() returned Done=$($renderState.Done) Bounds=$($renderState.Bounds) Err=$($renderState.Error)"
+
   if (-not $renderState.Done) {
-    # 部分热敏驱动不会同步触发 PrintPage，但作业仍可能已成功入队
-    Write-Warning "PrintPage callback was not observed; spooler may still have accepted the job."
+    Write-PrintLog "WARN PrintPage callback was not observed; spooler may still have accepted the job."
   }
+
+  # 交作业成功不等于设备打印成功：检查端口与队列错误
+  $portName = ""
+  try {
+    $pInfo = Get-Printer -Name $PrinterName -ErrorAction Stop
+    $portName = [string]$pInfo.PortName
+    Write-PrintLog ("printer PortName={0} PrinterStatus={1}" -f $portName, $pInfo.PrinterStatus)
+  } catch {
+    Write-PrintLog ("Get-Printer failed: {0}" -f $_.Exception.Message)
+  }
+
+  if ($portName -match '^(COM\d+)') {
+    $com = $Matches[1]
+    $comOk = $false
+    try {
+      $ports = [System.IO.Ports.SerialPort]::GetPortNames()
+      $comOk = $ports -contains $com
+      Write-PrintLog ("serial ports=[{0}] target={1} present={2}" -f ($ports -join ','), $com, $comOk)
+    } catch {
+      Write-PrintLog ("list serial ports failed: {0}" -f $_.Exception.Message)
+    }
+    if (-not $comOk) {
+      throw ("打印机端口 {0} 不可用（设备未连接或端口已变更）。请检查 POSLABEL 电源/数据线，并在 Windows 打印机属性中确认端口。" -f $portName)
+    }
+  }
+
+  Start-Sleep -Milliseconds 800
+  try {
+    $jobs = @(Get-PrintJob -PrinterName $PrinterName -ErrorAction SilentlyContinue | Where-Object {
+      $_.DocumentName -eq 'LabelPrint'
+    } | Sort-Object Id -Descending)
+    if ($jobs.Count -gt 0) {
+      $job = $jobs[0]
+      Write-PrintLog ("job Id={0} Status={1} PagesPrinted={2} Size={3}" -f $job.Id, $job.JobStatus, $job.PagesPrinted, $job.Size)
+      $st = [string]$job.JobStatus
+      if ($st -match 'Error|失败') {
+        throw ("打印机队列报错（作业 {0}：{1}）。多为设备离线、缺纸、端口不通或纸张尺寸与实物不符，不是编辑器渲染失败。" -f $job.Id, $st)
+      }
+    } else {
+      Write-PrintLog "no retained LabelPrint job in queue (likely completed or auto-deleted)"
+    }
+  } catch {
+    if ($_.Exception.Message -match '打印机队列报错|端口') { throw }
+    Write-PrintLog ("Get-PrintJob check skipped: {0}" -f $_.Exception.Message)
+  }
+
   Write-Output "OK"
   exit 0
 } catch {
-  Write-Error $_.Exception.Message
+  $msg = $_.Exception.Message
+  if (-not $msg) { $msg = $_.ToString() }
+  Write-PrintLog "ERROR $msg"
+  if ($_.ScriptStackTrace) { Write-PrintLog "STACK $($_.ScriptStackTrace)" }
+  [Console]::Error.WriteLine("PRINT_ERROR: $msg")
   exit 3
 } finally {
   if ($null -ne $img) { $img.Dispose() }
@@ -202,21 +445,47 @@ function normalizePrintError(raw) {
   if (/Print page was not rendered/i.test(text)) {
     return '打印任务已发送，但驱动未返回渲染确认'
   }
-  const line =
-    text
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .pop() || text
-  return line.replace(/^.*?:\s*/, '').slice(0, 240)
+
+  const marked = text.match(/PRINT_ERROR:\s*(.+)/i)
+  if (marked?.[1]) return marked[1].trim().slice(0, 240)
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter(
+      (s) =>
+        !/FullyQualifiedErrorId|CategoryInfo|WriteErrorException|^\+\s|At\s+.+\.ps1/i.test(
+          s,
+        ),
+    )
+
+  for (const line of lines) {
+    const m = line.match(/\.ps1\s*:\s*(.+)$/i)
+    if (m?.[1]) return m[1].trim().slice(0, 240)
+    const psErr = line.match(/\[PS\] ERROR\s+(.+)$/i)
+    if (psErr?.[1]) return psErr[1].trim().slice(0, 240)
+  }
+
+  const fallback = lines[0] || text
+  return fallback.replace(/^.*?:\s*/, '').slice(0, 240)
 }
 
 function runPowershellPrint(imagePath, printerName, widthMm, heightMm) {
-  const tmpDir = path.join(os.tmpdir(), 'label-print-editor')
-  fs.mkdirSync(tmpDir, { recursive: true })
+  const tmpDir = getPrintWorkDir()
+  const logPath = getPrintLogPath()
   // 写到纯 ASCII 临时路径，避免中文项目路径导致 PS 解析失败
   const scriptPath = path.join(tmpDir, 'print-label-run.ps1')
-  fs.writeFileSync(scriptPath, PRINT_PS1, 'ascii')
+  fs.writeFileSync(scriptPath, PRINT_PS1, 'utf8')
+
+  appendPrintLog('spawn powershell', {
+    scriptPath,
+    imagePath,
+    printerName,
+    widthMm,
+    heightMm,
+    logPath,
+  })
 
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -235,6 +504,8 @@ function runPowershellPrint(imagePath, printerName, widthMm, heightMm) {
         String(widthMm),
         '-HeightMm',
         String(heightMm),
+        '-LogPath',
+        logPath,
       ],
       { windowsHide: true },
     )
@@ -242,22 +513,32 @@ function runPowershellPrint(imagePath, printerName, widthMm, heightMm) {
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (d) => {
-      stdout += d.toString()
+      const chunk = d.toString()
+      stdout += chunk
+      appendPrintLog(`ps.stdout ${chunk.trim()}`)
     })
     child.stderr.on('data', (d) => {
-      stderr += d.toString()
+      const chunk = d.toString()
+      stderr += chunk
+      appendPrintLog(`ps.stderr ${chunk.trim()}`)
     })
-    child.on('error', reject)
+    child.on('error', (err) => {
+      appendPrintLog('spawn error', { message: err.message })
+      reject(err)
+    })
     child.on('close', (code) => {
-      try {
-        fs.unlinkSync(scriptPath)
-      } catch {
-        /* ignore */
-      }
-      if (code === 0) resolve({ ok: true, stdout })
+      appendPrintLog(`powershell exit code=${code}`, {
+        stdout: stdout.slice(-2000),
+        stderr: stderr.slice(-2000),
+      })
+      if (code === 0) resolve({ ok: true, stdout, logPath })
       else {
         const msg = normalizePrintError(stderr || stdout)
-        reject(new Error(msg || `print failed code=${code}`))
+        const err = new Error(
+          `${msg || `print failed code=${code}`}（日志: ${logPath}）`,
+        )
+        err.logPath = logPath
+        reject(err)
       }
     })
   })
@@ -280,15 +561,28 @@ async function printLabelPayload(payload) {
   const pageW = Number(widthMm)
   const pageH = Number(heightMm)
   const printDpi = Number(dpi) || 203
+  const logPath = getPrintLogPath()
+
+  appendPrintLog('========== print-label start ==========', {
+    widthMm: pageW,
+    heightMm: pageH,
+    dpi: printDpi,
+    deviceName,
+    silent,
+    dataUrlBytes: dataUrl ? dataUrl.length : 0,
+    platform: process.platform,
+  })
 
   if (!dataUrl || !(pageW > 0) || !(pageH > 0)) {
-    throw new Error('打印参数无效')
+    appendPrintLog('invalid params')
+    throw new Error(`打印参数无效（日志: ${logPath}）`)
   }
 
-  const tmpDir = path.join(os.tmpdir(), 'label-print-editor')
-  fs.mkdirSync(tmpDir, { recursive: true })
+  const tmpDir = getPrintWorkDir()
   const tmpPng = path.join(tmpDir, `label-${Date.now()}.png`)
   dataUrlToPngFile(dataUrl, tmpPng)
+  const pngStat = fs.statSync(tmpPng)
+  appendPrintLog('png written', { tmpPng, bytes: pngStat.size })
 
   try {
     if (process.platform === 'win32') {
@@ -296,22 +590,36 @@ async function printLabelPayload(payload) {
       if (!printer && mainWindow) {
         try {
           const list = await mainWindow.webContents.getPrintersAsync()
+          appendPrintLog(
+            'printer list',
+            list.map((p) => ({
+              name: p.name,
+              displayName: p.displayName,
+              isDefault: p.isDefault,
+              status: p.status,
+            })),
+          )
           const def = list.find((p) => p.isDefault) || list[0]
           printer = def?.name || ''
-        } catch {
+        } catch (err) {
+          appendPrintLog('getPrinters failed', { message: err.message })
           printer = ''
         }
       }
       if (!printer) {
-        throw new Error('未找到打印机，请在打印对话框中选择 POSLABEL')
+        appendPrintLog('no printer selected')
+        throw new Error(
+          `未找到打印机，请在打印对话框中选择打印机（日志: ${logPath}）`,
+        )
       }
 
+      appendPrintLog('selected printer', { printer })
       await runPowershellPrint(tmpPng, printer, pageW, pageH)
-      return { ok: true, cancelled: false, method: 'gdi-fullbleed' }
+      appendPrintLog('print-label success gdi-fullbleed')
+      return { ok: true, cancelled: false, method: 'gdi-fullbleed', logPath }
     }
 
-    // 非 Windows：Electron 打印整页图像
-    return await printViaElectronFallback({
+    const result = await printViaElectronFallback({
       dataUrl,
       pageW,
       pageH,
@@ -319,6 +627,20 @@ async function printLabelPayload(payload) {
       deviceName,
       silent,
     })
+    appendPrintLog('print-label success electron', result)
+    return { ...result, logPath }
+  } catch (err) {
+    appendPrintLog('print-label failed', {
+      message: err?.message || String(err),
+      stack: err?.stack,
+    })
+    const msg = err?.message || '打印失败'
+    if (!String(msg).includes('日志:')) {
+      const wrapped = new Error(`${msg}（日志: ${logPath}）`)
+      wrapped.logPath = logPath
+      throw wrapped
+    }
+    throw err
   } finally {
     setTimeout(() => {
       try {
@@ -326,7 +648,7 @@ async function printLabelPayload(payload) {
       } catch {
         /* ignore */
       }
-    }, 20000)
+    }, 60000)
   }
 }
 
@@ -402,6 +724,11 @@ img{position:absolute;left:0;top:0;width:${pageW}mm!important;height:${pageH}mm!
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
+  appendAppLog('app ready', {
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    platform: process.platform,
+  })
   createSplash()
   createWindow()
 
@@ -418,9 +745,96 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('get-print-log-path', async () => getPrintLogPath())
+
+  ipcMain.handle('open-print-log', async () => {
+    const logPath = getPrintLogPath()
+    if (!fs.existsSync(logPath)) {
+      appendPrintLog('log file created on open')
+    }
+    const err = await shell.openPath(logPath)
+    if (err) {
+      await shell.openPath(getPrintWorkDir())
+      return { ok: false, path: logPath, error: err }
+    }
+    return { ok: true, path: logPath }
+  })
+
+  ipcMain.handle('report-client-error', async (_event, payload) => {
+    appendAppLog('client-error', payload || {})
+    return { ok: true }
+  })
+
+  ipcMain.handle('export-feedback-log', async () => {
+    return exportFeedbackBundle()
+  })
+
+  ipcMain.handle('save-text-file', async (_event, payload = {}) => {
+    const defaultName = payload.defaultPath || 'export.txt'
+    const { canceled, filePath } = await dialog.showSaveDialog(
+      mainWindow || undefined,
+      {
+        title: payload.title || '保存文件',
+        defaultPath: path.isAbsolute(defaultName)
+          ? defaultName
+          : path.join(app.getPath('desktop'), defaultName),
+        filters: Array.isArray(payload.filters) && payload.filters.length
+          ? payload.filters
+          : [{ name: '文本', extensions: ['txt'] }],
+      },
+    )
+    if (canceled || !filePath) return { ok: false, cancelled: true }
+    fs.writeFileSync(filePath, String(payload.content ?? ''), 'utf8')
+    try {
+      shell.showItemInFolder(filePath)
+    } catch {
+      /* ignore */
+    }
+    return { ok: true, path: filePath }
+  })
+
+  ipcMain.handle('open-text-file', async (_event, payload = {}) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(
+      mainWindow || undefined,
+      {
+        title: payload.title || '打开文件',
+        properties: ['openFile'],
+        filters: Array.isArray(payload.filters) && payload.filters.length
+          ? payload.filters
+          : [{ name: '全部', extensions: ['*'] }],
+      },
+    )
+    if (canceled || !filePaths?.length) return { ok: false, cancelled: true }
+    const filePath = filePaths[0]
+    const content = fs.readFileSync(filePath, 'utf8')
+    return { ok: true, path: filePath, content }
+  })
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+process.on('uncaughtException', (err) => {
+  try {
+    appendAppLog('uncaughtException', {
+      message: err?.message,
+      stack: err?.stack,
+    })
+  } catch {
+    /* ignore */
+  }
+})
+
+process.on('unhandledRejection', (reason) => {
+  try {
+    appendAppLog('unhandledRejection', {
+      reason: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+    })
+  } catch {
+    /* ignore */
+  }
 })
 
 app.on('window-all-closed', () => {

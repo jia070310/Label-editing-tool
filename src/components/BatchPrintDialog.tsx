@@ -704,7 +704,20 @@ export function BatchPrintDialog({
               正在打印 {progress.current} / {progress.total} …
             </p>
           )}
-          {error && <p className="form-error">{error}</p>}
+          {error && (
+            <div className="form-error print-error-block">
+              <p>{error}</p>
+              {desktop && (
+                <button
+                  type="button"
+                  className="btn-secondary print-log-btn"
+                  onClick={() => window.electronAPI?.exportFeedbackLog?.()}
+                >
+                  导出反馈日志
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="modal-footer print-dialog-footer">

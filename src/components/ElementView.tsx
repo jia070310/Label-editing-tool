@@ -47,6 +47,34 @@ interface Props {
   onTableGridResizeStart: () => void
   onTableColWidth: (id: string, index: number, width: number) => void
   onTableRowHeight: (id: string, index: number, height: number) => void
+  onTableResizeColInRows: (
+    id: string,
+    leftIndex: number,
+    leftWidth: number,
+    rowStart: number,
+    rowEndExclusive: number,
+  ) => void
+  onTableResizeRowInCols: (
+    id: string,
+    topIndex: number,
+    topHeight: number,
+    colStart: number,
+    colEndExclusive: number,
+  ) => void
+  onTableMoveColBoundaryInRows: (
+    id: string,
+    leftIndex: number,
+    leftWidth: number,
+    rowStart: number,
+    rowEndExclusive: number,
+  ) => void
+  onTableMoveRowBoundaryInCols: (
+    id: string,
+    topIndex: number,
+    topHeight: number,
+    colStart: number,
+    colEndExclusive: number,
+  ) => void
   onTableMoveStart: (e: ReactMouseEvent, id: string) => void
   onInsertTableRows: (
     id: string,
@@ -195,6 +223,62 @@ export const ElementView = memo(function ElementView(props: Props) {
           }
           onGridResizeRow={(index, height) =>
             props.onTableRowHeight(element.id, index, height)
+          }
+          onGridResizeColInRows={(
+            leftIndex,
+            leftWidth,
+            rowStart,
+            rowEndExclusive,
+          ) =>
+            props.onTableResizeColInRows(
+              element.id,
+              leftIndex,
+              leftWidth,
+              rowStart,
+              rowEndExclusive,
+            )
+          }
+          onGridResizeRowInCols={(
+            topIndex,
+            topHeight,
+            colStart,
+            colEndExclusive,
+          ) =>
+            props.onTableResizeRowInCols(
+              element.id,
+              topIndex,
+              topHeight,
+              colStart,
+              colEndExclusive,
+            )
+          }
+          onGridMoveColBoundaryInRows={(
+            leftIndex,
+            leftWidth,
+            rowStart,
+            rowEndExclusive,
+          ) =>
+            props.onTableMoveColBoundaryInRows(
+              element.id,
+              leftIndex,
+              leftWidth,
+              rowStart,
+              rowEndExclusive,
+            )
+          }
+          onGridMoveRowBoundaryInCols={(
+            topIndex,
+            topHeight,
+            colStart,
+            colEndExclusive,
+          ) =>
+            props.onTableMoveRowBoundaryInCols(
+              element.id,
+              topIndex,
+              topHeight,
+              colStart,
+              colEndExclusive,
+            )
           }
           onTableMoveStart={(e) => props.onTableMoveStart(e, element.id)}
           onInsertRows={(row, count, where) =>

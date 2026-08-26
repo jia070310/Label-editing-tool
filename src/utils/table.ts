@@ -63,6 +63,10 @@ export function createTableElement(x = 5, y = 5): TableElement {
     cols,
     rowHeights,
     colWidths,
+    rowColWidths: Array.from({ length: rows }, () => [...colWidths]),
+    rowColHeights: Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => 8),
+    ),
     borderWidth: 0.2,
     borderColor: '#222222',
     fontFamily: 'SimHei, "Microsoft YaHei", sans-serif',
@@ -78,7 +82,7 @@ export function fitTableToRect(
   width: number,
   height: number,
 ): TableElement {
-  const base = resizeTableBox(el, Math.max(10, width), Math.max(10, height))
+  const base = resizeTableBox(el, Math.max(4, width), Math.max(4, height))
   return { ...base, x, y }
 }
 
@@ -170,12 +174,759 @@ export function createQrcodeElement(x = 5, y = 5): QrcodeElement {
 export const MAX_TABLE_ROWS = 40
 export const MAX_TABLE_COLS = 20
 
-export function syncTableSize(el: TableElement): TableElement {
+/** 边界对齐容差（mm）：错位后的线段不视为同一整线 */
+const BOUNDARY_ALIGN_EPS = 0.08
+
+/** 每行总宽对齐到同一目标（改末列），保证外框整齐 */
+function fitRowWidthsToTarget(
+  rowColWidths: number[][],
+  targetW: number,
+): number[][] {
+  const tw = Math.max(4, targetW)
+  return rowColWidths.map((row) => {
+    if (!row.length) return row
+    const next = row.map((w) => Math.max(4, w))
+    if (next.length === 1) return [tw]
+    const headSum = next.slice(0, -1).reduce((a, b) => a + b, 0)
+    next[next.length - 1] = Math.max(4, tw - headSum)
+    return next
+  })
+}
+
+/** 每列总高对齐到同一目标（改末行），保证外框整齐 */
+function fitColHeightsToTarget(
+  rowColHeights: number[][],
+  cols: number,
+  targetH: number,
+): number[][] {
+  const th = Math.max(2, targetH)
+  const rows = rowColHeights.length
+  if (rows < 1 || cols < 1) return rowColHeights
+  const next = rowColHeights.map((row) => row.map((h) => Math.max(2, h)))
+  for (let c = 0; c < cols; c++) {
+    if (rows === 1) {
+      next[0][c] = th
+      continue
+    }
+    let head = 0
+    for (let r = 0; r < rows - 1; r++) head += next[r][c] ?? 2
+    next[rows - 1][c] = Math.max(2, th - head)
+  }
+  return next
+}
+
+function maxRowWidth(rowColWidths: number[][] | undefined, fallback: number[]): number {
+  let max = 0
+  if (rowColWidths?.length) {
+    for (const row of rowColWidths) {
+      max = Math.max(
+        max,
+        row.reduce((a, b) => a + b, 0),
+      )
+    }
+  }
+  if (!(max > 0)) max = fallback.reduce((a, b) => a + b, 0)
+  return max || 1
+}
+
+function maxColHeight(
+  rowColHeights: number[][] | undefined,
+  cols: number,
+  fallback: number[],
+): number {
+  let max = 0
+  if (rowColHeights?.length && cols > 0) {
+    for (let c = 0; c < cols; c++) {
+      let h = 0
+      for (let r = 0; r < rowColHeights.length; r++) {
+        h += rowColHeights[r]?.[c] ?? 0
+      }
+      max = Math.max(max, h)
+    }
+  }
+  if (!(max > 0)) max = fallback.reduce((a, b) => a + b, 0)
+  return max || 1
+}
+
+/** 保证每行都有列宽数组，且各行总宽一致（等于表格宽） */
+export function ensureRowColWidths(el: TableElement): TableElement {
+  const cols = el.cols
+  const base =
+    el.colWidths.length === cols
+      ? el.colWidths
+      : Array.from({ length: cols }, (_, i) => el.colWidths[i] ?? 20)
+  const rows = el.rows
+  let rowColWidths = el.rowColWidths
+  const needRebuild =
+    !rowColWidths ||
+    rowColWidths.length !== rows ||
+    rowColWidths.some((r) => !r || r.length !== cols)
+  if (needRebuild) {
+    rowColWidths = Array.from({ length: rows }, () => [...base])
+  } else {
+    rowColWidths = rowColWidths!.map((row) =>
+      row.map((w) => Math.max(4, w ?? 4)),
+    )
+  }
+  const target =
+    el.width > 0
+      ? el.width
+      : maxRowWidth(rowColWidths, base)
+  rowColWidths = fitRowWidthsToTarget(rowColWidths!, target)
   return {
     ...el,
-    width: el.colWidths.reduce((a, b) => a + b, 0),
-    height: el.rowHeights.reduce((a, b) => a + b, 0),
+    width: target,
+    colWidths: [...(rowColWidths[0] ?? base)],
+    rowColWidths,
   }
+}
+
+/** 保证 [row][col] 行高矩阵，且各列总高一致（等于表格高） */
+export function ensureRowColHeights(el: TableElement): TableElement {
+  const rows = el.rows
+  const cols = el.cols
+  const baseH =
+    el.rowHeights.length === rows
+      ? el.rowHeights
+      : Array.from({ length: rows }, (_, i) => el.rowHeights[i] ?? 8)
+  let rowColHeights = el.rowColHeights
+  const needRebuild =
+    !rowColHeights ||
+    rowColHeights.length !== rows ||
+    rowColHeights.some((r) => !r || r.length !== cols)
+  if (needRebuild) {
+    rowColHeights = Array.from({ length: rows }, (_, r) =>
+      Array.from({ length: cols }, () => Math.max(2, baseH[r] ?? 8)),
+    )
+  } else {
+    rowColHeights = rowColHeights!.map((row) =>
+      row.map((h) => Math.max(2, h ?? 8)),
+    )
+  }
+  const target =
+    el.height > 0
+      ? el.height
+      : maxColHeight(rowColHeights, cols, baseH)
+  rowColHeights = fitColHeightsToTarget(rowColHeights!, cols, target)
+  const rowHeights = Array.from({ length: rows }, (_, r) =>
+    Math.max(2, ...(rowColHeights![r] ?? [baseH[r] ?? 8])),
+  )
+  return {
+    ...el,
+    height: target,
+    rowHeights,
+    rowColHeights,
+  }
+}
+
+/**
+ * 合并单元格内几何必须一致：
+ * - colspan：各列在同一行的行高相同
+ * - rowspan：各行在同一列的列宽相同
+ * 均衡时在同行/同列内补偿，避免总宽总高被抬高。
+ */
+export function alignMergedGeometry(el: TableElement): TableElement {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  let rowColWidths = base.rowColWidths!.map((r) => [...r])
+  let rowColHeights = base.rowColHeights!.map((r) => [...r])
+
+  for (let r = 0; r < base.rows; r++) {
+    for (let c = 0; c < base.cols; c++) {
+      const cell = base.cells[r]?.[c]
+      if (!cell || cell.covered) continue
+      const rs = Math.max(1, cell.rowspan)
+      const cs = Math.max(1, cell.colspan)
+
+      if (cs > 1) {
+        for (let rr = r; rr < r + rs && rr < base.rows; rr++) {
+          let sum = 0
+          let n = 0
+          for (let cc = c; cc < c + cs && cc < base.cols; cc++) {
+            sum += rowColHeights[rr][cc] ?? 2
+            n++
+          }
+          if (n < 1) continue
+          const avg = Math.max(2, sum / n)
+          for (let cc = c; cc < c + cs && cc < base.cols; cc++) {
+            const delta = avg - (rowColHeights[rr][cc] ?? 2)
+            rowColHeights[rr][cc] = avg
+            // 同列其他行补偿，优先末行
+            if (Math.abs(delta) < 1e-6) continue
+            const compRow =
+              rr === base.rows - 1 ? Math.max(0, base.rows - 2) : base.rows - 1
+            if (compRow === rr || compRow < 0) continue
+            // 仅当补偿行不在本次 colspan 行段内时才补，避免互相拉扯
+            if (compRow >= r && compRow < r + rs) continue
+            rowColHeights[compRow][cc] = Math.max(
+              2,
+              (rowColHeights[compRow][cc] ?? 2) - delta,
+            )
+          }
+        }
+      }
+
+      if (rs > 1) {
+        for (let cc = c; cc < c + cs && cc < base.cols; cc++) {
+          let sum = 0
+          let n = 0
+          for (let rr = r; rr < r + rs && rr < base.rows; rr++) {
+            sum += rowColWidths[rr][cc] ?? 4
+            n++
+          }
+          if (n < 1) continue
+          const avg = Math.max(4, sum / n)
+          for (let rr = r; rr < r + rs && rr < base.rows; rr++) {
+            const old = rowColWidths[rr][cc] ?? 4
+            const delta = avg - old
+            rowColWidths[rr][cc] = avg
+            if (Math.abs(delta) < 1e-6) continue
+            // 同行其他列补偿，优先末列且不在本次 colspan 内
+            let compCol = -1
+            for (let k = base.cols - 1; k >= 0; k--) {
+              if (k >= c && k < c + cs) continue
+              compCol = k
+              break
+            }
+            if (compCol < 0) continue
+            rowColWidths[rr][compCol] = Math.max(
+              4,
+              (rowColWidths[rr][compCol] ?? 4) - delta,
+            )
+          }
+        }
+      }
+    }
+  }
+
+  // 合并均衡后强制各行总宽、各列总高一致，避免外框参差
+  const targetW = base.width > 0 ? base.width : maxRowWidth(rowColWidths, base.colWidths)
+  const targetH =
+    base.height > 0
+      ? base.height
+      : maxColHeight(rowColHeights, base.cols, base.rowHeights)
+  rowColWidths = fitRowWidthsToTarget(rowColWidths, targetW)
+  rowColHeights = fitColHeightsToTarget(rowColHeights, base.cols, targetH)
+
+  const rowHeights = Array.from({ length: base.rows }, (_, r) =>
+    Math.max(2, ...rowColHeights[r]),
+  )
+  return {
+    ...base,
+    width: targetW,
+    height: targetH,
+    rowHeights,
+    rowColWidths,
+    rowColHeights,
+    colWidths: [...rowColWidths[0]],
+  }
+}
+
+function tableContentWidth(el: TableElement): number {
+  const rows = el.rowColWidths
+  if (!rows?.length) return el.colWidths.reduce((a, b) => a + b, 0)
+  let max = 0
+  for (const row of rows) {
+    max = Math.max(
+      max,
+      row.reduce((a, b) => a + b, 0),
+    )
+  }
+  return max || el.colWidths.reduce((a, b) => a + b, 0)
+}
+
+function tableContentHeight(el: TableElement): number {
+  if (!el.rowColHeights?.length) {
+    return el.rowHeights.reduce((a, b) => a + b, 0)
+  }
+  let max = 0
+  for (let c = 0; c < el.cols; c++) {
+    let colH = 0
+    for (let r = 0; r < el.rows; r++) {
+      colH += el.rowColHeights![r]?.[c] ?? el.rowHeights[r] ?? 0
+    }
+    max = Math.max(max, colH)
+  }
+  return max || el.rowHeights.reduce((a, b) => a + b, 0)
+}
+
+export function syncTableSize(el: TableElement): TableElement {
+  const normalized = alignMergedGeometry(
+    ensureRowColHeights(ensureRowColWidths(el)),
+  )
+  // 优先保留调用方锁定的宽高；仅在未设置时用内容尺寸
+  const width =
+    el.width > 0 ? el.width : tableContentWidth(normalized)
+  const height =
+    el.height > 0 ? el.height : tableContentHeight(normalized)
+  return {
+    ...normalized,
+    width,
+    height,
+  }
+}
+
+export function getRowColWidths(el: TableElement, row: number): number[] {
+  const n = ensureRowColWidths(el)
+  return n.rowColWidths![Math.min(Math.max(0, row), n.rows - 1)] ?? n.colWidths
+}
+
+function heightAt(el: TableElement, row: number, col: number): number {
+  const base = ensureRowColHeights(el)
+  return base.rowColHeights![row]?.[col] ?? base.rowHeights[row] ?? 8
+}
+
+function colStackY(
+  el: TableElement,
+  col: number,
+  rowEndExclusive: number,
+): number {
+  let y = 0
+  for (let r = 0; r < rowEndExclusive; r++) y += heightAt(el, r, col)
+  return y
+}
+
+/** 原点单元格在表格内的毫米包围盒（支持每行不同列宽、每列不同行高） */
+export function getCellBox(
+  el: TableElement,
+  row: number,
+  col: number,
+): { x: number; y: number; w: number; h: number } | null {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const cell = base.cells[row]?.[col]
+  if (!cell || cell.covered) return null
+  const widths = getRowColWidths(base, row)
+  const cs = Math.max(1, cell.colspan)
+  const rs = Math.max(1, cell.rowspan)
+  const x = widths.slice(0, col).reduce((a, b) => a + b, 0)
+  const w = widths.slice(col, col + cs).reduce((a, b) => a + b, 0)
+  const y = colStackY(base, col, row)
+  let h = 0
+  for (let r = row; r < row + rs; r++) h += heightAt(base, r, col)
+  return { x, y, w, h }
+}
+
+/** 按布局生成列分隔线段：同 X 连续可见行合并为一段 */
+export function buildColSegmentsLayout(el: TableElement): GridLineSegment[] {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const totalH = base.height || base.rowHeights.reduce((a, b) => a + b, 0) || 1
+  const totalW =
+    base.rowColWidths![0]?.reduce((a, b) => a + b, 0) ||
+    base.colWidths.reduce((a, b) => a + b, 0) ||
+    1
+  const segments: GridLineSegment[] = []
+  for (let ci = 0; ci < base.cols - 1; ci++) {
+    let ri = 0
+    while (ri < base.rows) {
+      if (!isColBoundaryVisible(base, ci, ri)) {
+        ri++
+        continue
+      }
+      const targetX = colBoundaryX(base, ri, ci)
+      const runStart = ri
+      ri++
+      while (ri < base.rows) {
+        if (!isColBoundaryVisible(base, ci, ri)) break
+        const x = colBoundaryX(base, ri, ci)
+        if (Math.abs(x - targetX) > BOUNDARY_ALIGN_EPS) break
+        ri++
+      }
+      const y0 = Math.max(
+        colStackY(base, ci, runStart),
+        colStackY(base, ci + 1, runStart),
+      )
+      const y1 = Math.min(
+        colStackY(base, ci, ri),
+        colStackY(base, ci + 1, ri),
+      )
+      if (y1 - y0 < 0.2) continue
+      segments.push({
+        index: ci,
+        posPct: (targetX / totalW) * 100,
+        startPct: (y0 / totalH) * 100,
+        endPct: (y1 / totalH) * 100,
+        spanStart: runStart,
+        spanEnd: ri,
+      })
+    }
+  }
+  return segments
+}
+
+/** 按布局生成行分隔线段：同 Y 连续可见列合并为一段 */
+export function buildRowSegmentsLayout(el: TableElement): GridLineSegment[] {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const totalH = base.height || base.rowHeights.reduce((a, b) => a + b, 0) || 1
+  const totalW =
+    base.rowColWidths![0]?.reduce((a, b) => a + b, 0) ||
+    base.colWidths.reduce((a, b) => a + b, 0) ||
+    1
+  const segments: GridLineSegment[] = []
+  for (let ri = 0; ri < base.rows - 1; ri++) {
+    let ci = 0
+    while (ci < base.cols) {
+      if (!isRowBoundaryVisible(base, ri, ci)) {
+        ci++
+        continue
+      }
+      const targetY = rowBoundaryY(base, ci, ri)
+      const runStart = ci
+      ci++
+      while (ci < base.cols) {
+        if (!isRowBoundaryVisible(base, ri, ci)) break
+        const y = rowBoundaryY(base, ci, ri)
+        if (Math.abs(y - targetY) > BOUNDARY_ALIGN_EPS) break
+        ci++
+      }
+      // 横向跨度：相邻行在该列范围上的宽度并集近似（用上侧行宽）
+      const widths = getRowColWidths(base, ri)
+      const x0 = widths.slice(0, runStart).reduce((a, b) => a + b, 0)
+      const x1 = widths.slice(0, ci).reduce((a, b) => a + b, 0)
+      if (x1 - x0 < 0.2) continue
+      segments.push({
+        index: ri,
+        posPct: (targetY / totalH) * 100,
+        startPct: (x0 / totalW) * 100,
+        endPct: (x1 / totalW) * 100,
+        spanStart: runStart,
+        spanEnd: ci,
+      })
+    }
+  }
+  return segments
+}
+
+/** Boundary X after leftIndex in a row (sum of widths[0..leftIndex]) */
+export function colBoundaryX(
+  el: TableElement,
+  row: number,
+  leftIndex: number,
+): number {
+  const widths = getRowColWidths(el, row)
+  return widths
+    .slice(0, Math.max(0, leftIndex + 1))
+    .reduce((a, b) => a + b, 0)
+}
+
+/** Boundary Y after topIndex in a column (sum of heights[0..topIndex] in that col) */
+export function rowBoundaryY(
+  el: TableElement,
+  col: number,
+  topIndex: number,
+): number {
+  return colStackY(el, col, Math.max(0, topIndex + 1))
+}
+
+/** 因 rowspan 合并，竖线拖动时扩大行范围，避免合并格内列宽不一致 */
+function expandRowRangeForColBoundary(
+  el: TableElement,
+  leftIndex: number,
+  rowStart: number,
+  rowEndExclusive: number,
+): [number, number] {
+  let r0 = rowStart
+  let r1 = rowEndExclusive
+  let changed = true
+  while (changed) {
+    changed = false
+    for (let r = 0; r < el.rows; r++) {
+      for (let c = 0; c < el.cols; c++) {
+        const cell = el.cells[r]?.[c]
+        if (!cell || cell.covered) continue
+        const rs = Math.max(1, cell.rowspan)
+        const cs = Math.max(1, cell.colspan)
+        if (rs <= 1) continue
+        const coversLeft = c <= leftIndex && c + cs > leftIndex
+        const coversRight = c <= leftIndex + 1 && c + cs > leftIndex + 1
+        if (!coversLeft && !coversRight) continue
+        const mr0 = r
+        const mr1 = r + rs
+        if (mr1 <= r0 || mr0 >= r1) continue
+        if (mr0 < r0 || mr1 > r1) {
+          r0 = Math.min(r0, mr0)
+          r1 = Math.max(r1, mr1)
+          changed = true
+        }
+      }
+    }
+  }
+  return [r0, r1]
+}
+
+/** 因 colspan 合并，横线拖动时扩大列范围，避免合并格内行高不一致 */
+function expandColRangeForRowBoundary(
+  el: TableElement,
+  topIndex: number,
+  colStart: number,
+  colEndExclusive: number,
+): [number, number] {
+  let c0 = colStart
+  let c1 = colEndExclusive
+  const bottomIndex = topIndex + 1
+  let changed = true
+  while (changed) {
+    changed = false
+    for (let r = 0; r < el.rows; r++) {
+      for (let c = 0; c < el.cols; c++) {
+        const cell = el.cells[r]?.[c]
+        if (!cell || cell.covered) continue
+        const rs = Math.max(1, cell.rowspan)
+        const cs = Math.max(1, cell.colspan)
+        if (cs <= 1) continue
+        const coversTop = r <= topIndex && r + rs > topIndex
+        const coversBottom = r <= bottomIndex && r + rs > bottomIndex
+        if (!coversTop && !coversBottom) continue
+        const mc0 = c
+        const mc1 = c + cs
+        if (mc1 <= c0 || mc0 >= c1) continue
+        if (mc0 < c0 || mc1 > c1) {
+          c0 = Math.min(c0, mc0)
+          c1 = Math.max(c1, mc1)
+          changed = true
+        }
+      }
+    }
+  }
+  return [c0, c1]
+}
+
+/** 从锚点行沿 leftIndex 扩展：可见且边界 X 对齐的连续行 */
+export function findAlignedColRowSpan(
+  el: TableElement,
+  leftIndex: number,
+  anchorRow: number,
+): { rowStart: number; rowEnd: number } {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const anchor = Math.max(0, Math.min(base.rows - 1, Math.floor(anchorRow)))
+  if (leftIndex < 0 || leftIndex >= base.cols - 1) {
+    return { rowStart: anchor, rowEnd: anchor + 1 }
+  }
+  if (!isColBoundaryVisible(base, leftIndex, anchor)) {
+    return { rowStart: anchor, rowEnd: anchor + 1 }
+  }
+  const targetX = colBoundaryX(base, anchor, leftIndex)
+  let rowStart = anchor
+  let rowEnd = anchor + 1
+  while (rowStart > 0) {
+    const r = rowStart - 1
+    if (!isColBoundaryVisible(base, leftIndex, r)) break
+    if (Math.abs(colBoundaryX(base, r, leftIndex) - targetX) > BOUNDARY_ALIGN_EPS)
+      break
+    rowStart = r
+  }
+  while (rowEnd < base.rows) {
+    if (!isColBoundaryVisible(base, leftIndex, rowEnd)) break
+    if (
+      Math.abs(colBoundaryX(base, rowEnd, leftIndex) - targetX) >
+      BOUNDARY_ALIGN_EPS
+    )
+      break
+    rowEnd++
+  }
+  ;[rowStart, rowEnd] = expandRowRangeForColBoundary(
+    base,
+    leftIndex,
+    rowStart,
+    rowEnd,
+  )
+  return { rowStart, rowEnd }
+}
+
+/** 从锚点列沿 topIndex 扩展：可见且边界 Y 对齐的连续列 */
+export function findAlignedRowColSpan(
+  el: TableElement,
+  topIndex: number,
+  anchorCol: number,
+): { colStart: number; colEnd: number } {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const anchor = Math.max(0, Math.min(base.cols - 1, Math.floor(anchorCol)))
+  if (topIndex < 0 || topIndex >= base.rows - 1) {
+    return { colStart: anchor, colEnd: anchor + 1 }
+  }
+  if (!isRowBoundaryVisible(base, topIndex, anchor)) {
+    return { colStart: anchor, colEnd: anchor + 1 }
+  }
+  const targetY = rowBoundaryY(base, anchor, topIndex)
+  let colStart = anchor
+  let colEnd = anchor + 1
+  while (colStart > 0) {
+    const c = colStart - 1
+    if (!isRowBoundaryVisible(base, topIndex, c)) break
+    if (Math.abs(rowBoundaryY(base, c, topIndex) - targetY) > BOUNDARY_ALIGN_EPS)
+      break
+    colStart = c
+  }
+  while (colEnd < base.cols) {
+    if (!isRowBoundaryVisible(base, topIndex, colEnd)) break
+    if (
+      Math.abs(rowBoundaryY(base, colEnd, topIndex) - targetY) >
+      BOUNDARY_ALIGN_EPS
+    )
+      break
+    colEnd++
+  }
+  ;[colStart, colEnd] = expandColRangeForRowBoundary(
+    base,
+    topIndex,
+    colStart,
+    colEnd,
+  )
+  return { colStart, colEnd }
+}
+
+/** 仅在指定行范围内成对移动列分隔线（左宽右窄，各行总宽保持为表格宽） */
+export function moveColBoundaryInRows(
+  el: TableElement,
+  leftIndex: number,
+  leftWidth: number,
+  rowStart: number,
+  rowEnd: number,
+): TableElement {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const lockedW = base.width > 0 ? base.width : tableContentWidth(base)
+  const lockedH = base.height > 0 ? base.height : tableContentHeight(base)
+  const rightIndex = leftIndex + 1
+  if (rightIndex >= base.cols || leftIndex < 0) {
+    return setColWidth(base, leftIndex, leftWidth)
+  }
+  let r0 = Math.max(0, Math.min(base.rows, Math.floor(rowStart)))
+  let r1 = Math.max(r0, Math.min(base.rows, Math.floor(rowEnd)))
+  ;[r0, r1] = expandRowRangeForColBoundary(base, leftIndex, r0, r1)
+  let rowColWidths = base.rowColWidths!.map((row, ri) => {
+    if (ri < r0 || ri >= r1) return [...row]
+    const sum = (row[leftIndex] ?? 4) + (row[rightIndex] ?? 4)
+    const newLeft = Math.max(4, Math.min(sum - 4, leftWidth))
+    const next = [...row]
+    next[leftIndex] = newLeft
+    next[rightIndex] = Math.max(4, sum - newLeft)
+    return next
+  })
+  rowColWidths = fitRowWidthsToTarget(rowColWidths, lockedW)
+  return syncTableSize({
+    ...base,
+    width: lockedW,
+    height: lockedH,
+    rowColWidths,
+    colWidths: [...rowColWidths[0]],
+  })
+}
+
+/** 仅在指定列范围内成对移动行分隔线（上高下矮，各列总高保持为表格高） */
+export function moveRowBoundaryInCols(
+  el: TableElement,
+  topIndex: number,
+  topHeight: number,
+  colStart: number,
+  colEnd: number,
+): TableElement {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const lockedW = base.width > 0 ? base.width : tableContentWidth(base)
+  const lockedH = base.height > 0 ? base.height : tableContentHeight(base)
+  const bottomIndex = topIndex + 1
+  if (bottomIndex >= base.rows || topIndex < 0) {
+    return setRowHeight(base, topIndex, topHeight)
+  }
+  let c0 = Math.max(0, Math.min(base.cols, Math.floor(colStart)))
+  let c1 = Math.max(c0, Math.min(base.cols, Math.floor(colEnd)))
+  ;[c0, c1] = expandColRangeForRowBoundary(base, topIndex, c0, c1)
+  let rowColHeights = base.rowColHeights!.map((row) => [...row])
+  for (let c = c0; c < c1; c++) {
+    const sum =
+      (rowColHeights[topIndex][c] ?? 2) + (rowColHeights[bottomIndex][c] ?? 2)
+    const newTop = Math.max(2, Math.min(sum - 2, topHeight))
+    rowColHeights[topIndex][c] = newTop
+    rowColHeights[bottomIndex][c] = Math.max(2, sum - newTop)
+  }
+  rowColHeights = fitColHeightsToTarget(rowColHeights, base.cols, lockedH)
+  return syncTableSize({
+    ...base,
+    width: lockedW,
+    height: lockedH,
+    rowColHeights,
+  })
+}
+
+/** 仅在行范围内改列宽；表格总宽随该列变化，其它行末列补齐，外框始终整齐 */
+export function resizeColInRows(
+  el: TableElement,
+  leftIndex: number,
+  leftWidth: number,
+  rowStart: number,
+  rowEnd: number,
+): TableElement {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  if (leftIndex < 0 || leftIndex >= base.cols) return base
+  let r0 = Math.max(0, Math.min(base.rows, Math.floor(rowStart)))
+  let r1 = Math.max(r0, Math.min(base.rows, Math.floor(rowEnd)))
+  ;[r0, r1] = expandRowRangeForColBoundary(base, leftIndex, r0, r1)
+  const anchor = Math.max(r0, Math.min(r1 - 1, r0))
+  const oldLeft = base.rowColWidths![anchor]?.[leftIndex] ?? base.colWidths[leftIndex] ?? 20
+  const w = Math.max(4, leftWidth)
+  const delta = w - oldLeft
+  const oldW = base.width > 0 ? base.width : tableContentWidth(base)
+  const newW = Math.max(base.cols * 4, oldW + delta)
+  let rowColWidths = base.rowColWidths!.map((row, ri) => {
+    if (ri < r0 || ri >= r1) return [...row]
+    const next = [...row]
+    next[leftIndex] = w
+    return next
+  })
+  rowColWidths = fitRowWidthsToTarget(rowColWidths, newW)
+  return syncTableSize({
+    ...base,
+    width: newW,
+    rowColWidths,
+    colWidths: [...rowColWidths[0]],
+  })
+}
+
+/** 仅在列范围内改行高；表格总高随该行变化，其它列末行补齐，外框始终整齐 */
+export function resizeRowInCols(
+  el: TableElement,
+  topIndex: number,
+  topHeight: number,
+  colStart: number,
+  colEnd: number,
+): TableElement {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  if (topIndex < 0 || topIndex >= base.rows) return base
+  let c0 = Math.max(0, Math.min(base.cols, Math.floor(colStart)))
+  let c1 = Math.max(c0, Math.min(base.cols, Math.floor(colEnd)))
+  ;[c0, c1] = expandColRangeForRowBoundary(base, topIndex, c0, c1)
+  const anchor = Math.max(c0, Math.min(c1 - 1, c0))
+  const oldTop =
+    base.rowColHeights![topIndex]?.[anchor] ?? base.rowHeights[topIndex] ?? 8
+  const h = Math.max(2, topHeight)
+  const delta = h - oldTop
+  const oldH = base.height > 0 ? base.height : tableContentHeight(base)
+  const newH = Math.max(base.rows * 2, oldH + delta)
+  let rowColHeights = base.rowColHeights!.map((row) => [...row])
+  for (let c = c0; c < c1; c++) {
+    rowColHeights[topIndex][c] = h
+  }
+  rowColHeights = fitColHeightsToTarget(rowColHeights, base.cols, newH)
+  return syncTableSize({
+    ...base,
+    height: newH,
+    rowColHeights,
+  })
+}
+
+/** 移动列分隔线：所有行（legacy） */
+export function moveColBoundary(
+  el: TableElement,
+  leftIndex: number,
+  leftWidth: number,
+): TableElement {
+  return moveColBoundaryInRows(el, leftIndex, leftWidth, 0, el.rows)
+}
+
+/** 移动行分隔线：所有列（legacy） */
+export function moveRowBoundary(
+  el: TableElement,
+  topIndex: number,
+  topHeight: number,
+): TableElement {
+  return moveRowBoundaryInCols(el, topIndex, topHeight, 0, el.cols)
 }
 
 /** 缩表后修正越界合并单元格，避免渲染崩溃 */
@@ -210,43 +961,77 @@ function clampMergedCells(el: TableElement): TableElement {
 }
 
 export function setTableRows(el: TableElement, rows: number): TableElement {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
   const next = Math.min(MAX_TABLE_ROWS, Math.max(1, Math.floor(rows)))
-  let cells = cloneCells(el.cells)
-  let rowHeights = [...el.rowHeights]
-  const cols = el.cols
-  if (next > el.rows) {
-    for (let r = el.rows; r < next; r++) {
+  let cells = cloneCells(base.cells)
+  let rowHeights = [...base.rowHeights]
+  let rowColWidths = base.rowColWidths!.map((r) => [...r])
+  let rowColHeights = base.rowColHeights!.map((r) => [...r])
+  const cols = base.cols
+  if (next > base.rows) {
+    const template = [...(rowColWidths[base.rows - 1] ?? base.colWidths)]
+    const hTemplate = Array.from({ length: cols }, () => 8)
+    for (let r = base.rows; r < next; r++) {
       cells.push(Array.from({ length: cols }, () => createEmptyCell()))
       rowHeights.push(8)
+      rowColWidths.push([...template])
+      rowColHeights.push([...hTemplate])
     }
-  } else if (next < el.rows) {
+  } else if (next < base.rows) {
     cells = cells.slice(0, next)
     rowHeights = rowHeights.slice(0, next)
+    rowColWidths = rowColWidths.slice(0, next)
+    rowColHeights = rowColHeights.slice(0, next)
   }
   return clampMergedCells(
-    syncTableSize({ ...el, rows: next, cells, rowHeights }),
+    syncTableSize({
+      ...base,
+      rows: next,
+      cells,
+      rowHeights,
+      rowColWidths,
+      rowColHeights,
+      colWidths: [...(rowColWidths[0] ?? base.colWidths)],
+    }),
   )
 }
 
 export function setTableCols(el: TableElement, cols: number): TableElement {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
   const next = Math.min(MAX_TABLE_COLS, Math.max(1, Math.floor(cols)))
-  let cells = cloneCells(el.cells)
-  let colWidths = [...el.colWidths]
-  if (next > el.cols) {
+  let cells = cloneCells(base.cells)
+  let colWidths = [...base.colWidths]
+  let rowColWidths = base.rowColWidths!.map((r) => [...r])
+  let rowColHeights = base.rowColHeights!.map((r) => [...r])
+  if (next > base.cols) {
     cells = cells.map((row) => [
       ...row,
-      ...Array.from({ length: next - el.cols }, () => createEmptyCell()),
+      ...Array.from({ length: next - base.cols }, () => createEmptyCell()),
     ])
-    colWidths = [
-      ...colWidths,
-      ...Array.from({ length: next - el.cols }, () => 20),
-    ]
-  } else if (next < el.cols) {
+    const add = Array.from({ length: next - base.cols }, () => 20)
+    colWidths = [...colWidths, ...add]
+    rowColWidths = rowColWidths.map((r) => [...r, ...add])
+    rowColHeights = rowColHeights.map((rowH, r) => [
+      ...rowH,
+      ...Array.from({ length: next - base.cols }, () =>
+        Math.max(2, base.rowHeights[r] ?? 8),
+      ),
+    ])
+  } else if (next < base.cols) {
     cells = cells.map((row) => row.slice(0, next))
     colWidths = colWidths.slice(0, next)
+    rowColWidths = rowColWidths.map((r) => r.slice(0, next))
+    rowColHeights = rowColHeights.map((r) => r.slice(0, next))
   }
   return clampMergedCells(
-    syncTableSize({ ...el, cols: next, cells, colWidths }),
+    syncTableSize({
+      ...base,
+      cols: next,
+      cells,
+      colWidths,
+      rowColWidths,
+      rowColHeights,
+    }),
   )
 }
 
@@ -291,6 +1076,26 @@ export function insertRows(
     ),
   )
   const blankHeights = Array.from({ length: insertCount }, () => defaultH)
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const template = [...(base.rowColWidths![row] ?? base.colWidths)]
+  const blankRowCols = Array.from({ length: insertCount }, () => [...template])
+  const rowColWidths = [
+    ...base.rowColWidths!.slice(0, insertAt),
+    ...blankRowCols,
+    ...base.rowColWidths!.slice(insertAt),
+  ]
+  const hTemplate = [
+    ...(base.rowColHeights![row] ??
+      Array.from({ length: el.cols }, () => defaultH)),
+  ]
+  const blankRowHeights = Array.from({ length: insertCount }, () => [
+    ...hTemplate,
+  ])
+  const rowColHeights = [
+    ...base.rowColHeights!.slice(0, insertAt),
+    ...blankRowHeights,
+    ...base.rowColHeights!.slice(insertAt),
+  ]
 
   return syncTableSize({
     ...el,
@@ -305,6 +1110,9 @@ export function insertRows(
       ...blankHeights,
       ...rowHeights.slice(insertAt),
     ],
+    rowColWidths,
+    rowColHeights,
+    colWidths: [...(rowColWidths[0] ?? el.colWidths)],
   })
 }
 
@@ -351,6 +1159,19 @@ export function insertCols(
     ...row.slice(insertAt),
   ])
   const blankWidths = Array.from({ length: insertCount }, () => defaultW)
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const rowColWidths = base.rowColWidths!.map((rowWidths) => [
+    ...rowWidths.slice(0, insertAt),
+    ...blankWidths,
+    ...rowWidths.slice(insertAt),
+  ])
+  const rowColHeights = base.rowColHeights!.map((rowH, r) => [
+    ...rowH.slice(0, insertAt),
+    ...Array.from({ length: insertCount }, () =>
+      Math.max(2, base.rowHeights[r] ?? 8),
+    ),
+    ...rowH.slice(insertAt),
+  ])
 
   return syncTableSize({
     ...el,
@@ -361,6 +1182,8 @@ export function insertCols(
       ...blankWidths,
       ...colWidths.slice(insertAt),
     ],
+    rowColWidths,
+    rowColHeights,
   })
 }
 
@@ -394,6 +1217,7 @@ export function deleteRows(
     }
   }
 
+  const base = ensureRowColHeights(ensureRowColWidths(el))
   return clampMergedCells(
     syncTableSize({
       ...el,
@@ -403,6 +1227,12 @@ export function deleteRows(
         ...el.rowHeights.slice(0, start),
         ...el.rowHeights.slice(end),
       ],
+      rowColWidths: base.rowColWidths!.filter(
+        (_, i) => i < start || i >= end,
+      ),
+      rowColHeights: base.rowColHeights!.filter(
+        (_, i) => i < start || i >= end,
+      ),
     }),
   )
 }
@@ -437,6 +1267,7 @@ export function deleteCols(
     }
   }
 
+  const base = ensureRowColHeights(ensureRowColWidths(el))
   return clampMergedCells(
     syncTableSize({
       ...el,
@@ -449,6 +1280,14 @@ export function deleteCols(
         ...el.colWidths.slice(0, start),
         ...el.colWidths.slice(end),
       ],
+      rowColWidths: base.rowColWidths!.map((row) => [
+        ...row.slice(0, start),
+        ...row.slice(end),
+      ]),
+      rowColHeights: base.rowColHeights!.map((row) => [
+        ...row.slice(0, start),
+        ...row.slice(end),
+      ]),
     }),
   )
 }
@@ -458,9 +1297,23 @@ export function setRowHeight(
   index: number,
   height: number,
 ): TableElement {
-  const rowHeights = [...el.rowHeights]
-  rowHeights[index] = Math.max(2, height)
-  return syncTableSize({ ...el, rowHeights })
+  const base = ensureRowColHeights(el)
+  const h = Math.max(2, height)
+  const oldH = base.rowHeights[index] ?? 8
+  const delta = h - oldH
+  const rowHeights = [...base.rowHeights]
+  rowHeights[index] = h
+  const rowColHeights = base.rowColHeights!.map((row, ri) => {
+    if (ri !== index) return [...row]
+    return row.map(() => h)
+  })
+  const newH = Math.max(base.rows * 2, (base.height || tableContentHeight(base)) + delta)
+  return syncTableSize({
+    ...base,
+    height: newH,
+    rowHeights,
+    rowColHeights,
+  })
 }
 
 export function setColWidth(
@@ -468,9 +1321,24 @@ export function setColWidth(
   index: number,
   width: number,
 ): TableElement {
-  const colWidths = [...el.colWidths]
-  colWidths[index] = Math.max(4, width)
-  return syncTableSize({ ...el, colWidths })
+  const base = ensureRowColWidths(el)
+  const w = Math.max(4, width)
+  const oldW = base.colWidths[index] ?? 20
+  const delta = w - oldW
+  const colWidths = [...base.colWidths]
+  colWidths[index] = w
+  const rowColWidths = base.rowColWidths!.map((row) => {
+    const next = [...row]
+    next[index] = w
+    return next
+  })
+  const newW = Math.max(base.cols * 4, (base.width || tableContentWidth(base)) + delta)
+  return syncTableSize({
+    ...base,
+    width: newW,
+    colWidths,
+    rowColWidths,
+  })
 }
 
 /** Scale row/col sizes proportionally when outer box is resized */
@@ -479,36 +1347,56 @@ export function resizeTableBox(
   width: number,
   height: number,
 ): TableElement {
-  const w = Math.max(10, width)
-  const h = Math.max(10, height)
-  const oldW = el.colWidths.reduce((a, b) => a + b, 0) || 1
-  const oldH = el.rowHeights.reduce((a, b) => a + b, 0) || 1
-  const colWidths = el.colWidths.map((c) => Math.max(4, (c / oldW) * w))
-  const rowHeights = el.rowHeights.map((r) => Math.max(2, (r / oldH) * h))
-
-  // 把舍入/最小值夹紧造成的误差补到最后一列/行，保证与目标宽高一致
-  const sumW = colWidths.reduce((a, b) => a + b, 0)
-  const sumH = rowHeights.reduce((a, b) => a + b, 0)
-  if (colWidths.length > 0) {
-    colWidths[colWidths.length - 1] = Math.max(
-      4,
-      colWidths[colWidths.length - 1] + (w - sumW),
-    )
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const w = Math.max(4, width)
+  const h = Math.max(4, height)
+  const oldW =
+    base.rowColWidths![0]?.reduce((a, b) => a + b, 0) ||
+    base.colWidths.reduce((a, b) => a + b, 0) ||
+    1
+  const oldH = base.height || base.rowHeights.reduce((a, b) => a + b, 0) || 1
+  const scaleRow = (row: number[]) => {
+    const scaled = row.map((c) => Math.max(4, (c / oldW) * w))
+    const sumW = scaled.reduce((a, b) => a + b, 0)
+    if (scaled.length) {
+      scaled[scaled.length - 1] = Math.max(
+        4,
+        scaled[scaled.length - 1] + (w - sumW),
+      )
+    }
+    return scaled
   }
-  if (rowHeights.length > 0) {
-    rowHeights[rowHeights.length - 1] = Math.max(
-      2,
-      rowHeights[rowHeights.length - 1] + (h - sumH),
+  const colWidths = scaleRow(base.colWidths)
+  const rowColWidths = base.rowColWidths!.map((row) => scaleRow(row))
+  const scaleColHeights = (col: number) => {
+    const heights = base.rowColHeights!.map((row) =>
+      Math.max(2, ((row[col] ?? 8) / oldH) * h),
     )
+    const sumH = heights.reduce((a, b) => a + b, 0)
+    if (heights.length) {
+      heights[heights.length - 1] = Math.max(
+        2,
+        heights[heights.length - 1] + (h - sumH),
+      )
+    }
+    return heights
+  }
+  const rowColHeights = Array.from({ length: base.rows }, () =>
+    Array.from({ length: base.cols }, () => 2),
+  )
+  for (let c = 0; c < base.cols; c++) {
+    const heights = scaleColHeights(c)
+    for (let r = 0; r < base.rows; r++) rowColHeights[r][c] = heights[r]
   }
 
-  return {
-    ...el,
-    width: colWidths.reduce((a, b) => a + b, 0),
-    height: rowHeights.reduce((a, b) => a + b, 0),
+  return syncTableSize({
+    ...base,
+    width: w,
+    height: h,
     colWidths,
-    rowHeights,
-  }
+    rowColWidths,
+    rowColHeights,
+  })
 }
 
 function cloneCells(cells: TableCell[][]): TableCell[][] {
@@ -645,27 +1533,19 @@ export function getCellAtPoint(
   localX: number,
   localY: number,
 ): CellPos | null {
-  let y = 0
   for (let r = 0; r < el.rows; r++) {
-    let x = 0
-    const rh = el.rowHeights[r]
     for (let c = 0; c < el.cols; c++) {
-      const cw = el.colWidths[c]
-      const cell = el.cells[r][c]
-      if (!cell.covered) {
-        const w = el.colWidths
-          .slice(c, c + cell.colspan)
-          .reduce((a, b) => a + b, 0)
-        const h = el.rowHeights
-          .slice(r, r + cell.rowspan)
-          .reduce((a, b) => a + b, 0)
-        if (localX >= x && localX < x + w && localY >= y && localY < y + h) {
-          return { row: r, col: c }
-        }
+      const box = getCellBox(el, r, c)
+      if (!box) continue
+      if (
+        localX >= box.x &&
+        localX < box.x + box.w &&
+        localY >= box.y &&
+        localY < box.y + box.h
+      ) {
+        return { row: r, col: c }
       }
-      x += cw
     }
-    y += rh
   }
   return null
 }
@@ -728,6 +1608,9 @@ export type GridLineSegment = {
   startPct: number
   /** 分段终点百分比 */
   endPct: number
+  /** 列线覆盖的行 [spanStart, spanEnd)；行线覆盖的列同理 */
+  spanStart: number
+  spanEnd: number
 }
 
 /** 可见列分隔线段（跳过合并单元格内部） */
@@ -750,6 +1633,8 @@ export function getVisibleColSegments(
           posPct: colBoundaries[ci],
           startPct: rowStarts[runStart],
           endPct: rowBoundaries[ri - 1],
+          spanStart: runStart,
+          spanEnd: ri,
         })
         runStart = -1
       }
@@ -778,6 +1663,8 @@ export function getVisibleRowSegments(
           posPct: rowBoundaries[ri],
           startPct: colStarts[runStart],
           endPct: colBoundaries[ci - 1],
+          spanStart: runStart,
+          spanEnd: ci,
         })
         runStart = -1
       }

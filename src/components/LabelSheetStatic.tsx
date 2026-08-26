@@ -23,6 +23,34 @@ const noopCommit = (
 ) => {}
 const noopText = (_a: string, _b?: string) => {}
 const noopGrid = (_id: string, _index: number, _value: number) => {}
+const noopResizeColInRows = (
+  _id: string,
+  _leftIndex: number,
+  _leftWidth: number,
+  _rowStart: number,
+  _rowEndExclusive: number,
+) => {}
+const noopResizeRowInCols = (
+  _id: string,
+  _topIndex: number,
+  _topHeight: number,
+  _colStart: number,
+  _colEndExclusive: number,
+) => {}
+const noopMoveColBoundaryInRows = (
+  _id: string,
+  _leftIndex: number,
+  _leftWidth: number,
+  _rowStart: number,
+  _rowEndExclusive: number,
+) => {}
+const noopMoveRowBoundaryInCols = (
+  _id: string,
+  _topIndex: number,
+  _topHeight: number,
+  _colStart: number,
+  _colEndExclusive: number,
+) => {}
 const noopMove = (_e: ReactMouseEvent, _id: string) => {}
 const noopInsertRows = (
   _id: string,
@@ -90,6 +118,10 @@ export function LabelSheetStatic({ elements, settings, onMounted }: Props) {
           onTableGridResizeStart={noop}
           onTableColWidth={noopGrid}
           onTableRowHeight={noopGrid}
+          onTableResizeColInRows={noopResizeColInRows}
+          onTableResizeRowInCols={noopResizeRowInCols}
+          onTableMoveColBoundaryInRows={noopMoveColBoundaryInRows}
+          onTableMoveRowBoundaryInCols={noopMoveRowBoundaryInCols}
           onTableMoveStart={noopMove}
           onInsertTableRows={noopInsertRows}
           onInsertTableCols={noopInsertCols}

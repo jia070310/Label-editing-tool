@@ -1,4 +1,5 @@
 import {
+  Download,
   AlignCenter,
   AlignCenterVertical,
   AlignEndVertical,
@@ -75,6 +76,7 @@ interface Props {
   onPrint: () => void
   onBatchPrint: () => void
   onSave: () => void
+  onExportTemplate: () => void
   onHome: () => void
   onOpenSettings: () => void
   selected: LabelElement | null
@@ -110,6 +112,7 @@ export function TopToolbar({
   onPrint,
   onBatchPrint,
   onSave,
+  onExportTemplate,
   onHome,
   onOpenSettings,
   selected,
@@ -189,6 +192,14 @@ export function TopToolbar({
           <button className="tool-btn" title="保存" onClick={onSave}>
             <Save size={16} />
             <span className="label">保存</span>
+          </button>
+          <button
+            className="tool-btn"
+            title="导出模板文件"
+            onClick={onExportTemplate}
+          >
+            <Download size={16} />
+            <span className="label">导出</span>
           </button>
           <button className="tool-btn" title="删除" onClick={onDelete}>
             <Trash2 size={16} />

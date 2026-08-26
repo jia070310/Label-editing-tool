@@ -1,4 +1,4 @@
-# 标签编辑打印工具
+# 柠檬标签工具
 
 桌面端标签设计与打印工具（Electron），按毫米尺寸精确输出。
 
@@ -8,8 +8,12 @@
 
 请到 [Releases](https://github.com/jia070310/Label-editing-tool/releases) 下载：
 
-- **安装包** `标签编辑打印工具-*-x64.exe`
-- **绿色版** `标签编辑打印工具-*-portable.exe`
+- **安装包** `Lemon-Label-Tool-*-x64.exe`
+- **绿色版** `Lemon-Label-Tool-*-portable.exe`
+
+## 反馈日志
+
+首页点击「反馈日志」，或在打印/崩溃报错时导出日志文本（仅本机保存，不联网）。把文件发给开发者即可协助排查。
 
 ## 开发启动
 

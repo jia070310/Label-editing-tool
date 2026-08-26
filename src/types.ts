@@ -46,6 +46,10 @@ export interface TableElement extends BaseElement {
   cols: number
   rowHeights: number[]
   colWidths: number[]
+  /** 每行列宽；缺省由 colWidths 推导。用于线条错位移动 */
+  rowColWidths?: number[][]
+  /** 每列行高 [row][col]；缺省由 rowHeights 推导 */
+  rowColHeights?: number[][]
   borderWidth: number
   borderColor: string
   fontFamily: string

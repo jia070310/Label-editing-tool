@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { FilePlus2, FolderOpen, Pencil, Trash2 } from 'lucide-react'
+import {
+  Download,
+  FilePlus2,
+  FolderOpen,
+  MessageSquareWarning,
+  Pencil,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import type { LabelTemplate } from '../utils/storage'
+import { FeedbackLogDialog } from './FeedbackLogDialog'
 
 interface Props {
   templates: LabelTemplate[]
@@ -9,6 +18,8 @@ interface Props {
   onOpen: (tpl: LabelTemplate) => void
   onDelete: (id: string) => void
   onRename: (id: string, name: string) => void
+  onExport: (tpl: LabelTemplate) => void
+  onImport: () => void
 }
 
 type ContextMenuState = {
@@ -37,11 +48,14 @@ export function HomeScreen({
   onOpen,
   onDelete,
   onRename,
+  onExport,
+  onImport,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [renaming, setRenaming] = useState<LabelTemplate | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [renameError, setRenameError] = useState('')
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const renameInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -109,12 +123,30 @@ export function HomeScreen({
   return (
     <div className="home-screen">
       <div className="home-hero">
-        <h1>标签编辑打印</h1>
+        <h1>柠檬标签工具</h1>
         <p>桌面版精确毫米打印 · 先选择模板，或按纸张尺寸新建空白标签</p>
         <div className="home-actions">
           <button className="home-btn primary" onClick={onNew}>
             <FilePlus2 size={18} />
             新建标签模板
+          </button>
+          <button
+            className="home-btn"
+            type="button"
+            onClick={onImport}
+            title="从文件添加模板到本地库"
+          >
+            <Upload size={18} />
+            添加模板
+          </button>
+          <button
+            className="home-btn"
+            type="button"
+            onClick={() => setFeedbackOpen(true)}
+            title="导出错误与打印日志，便于反馈"
+          >
+            <MessageSquareWarning size={18} />
+            反馈日志
           </button>
         </div>
       </div>
@@ -128,7 +160,7 @@ export function HomeScreen({
 
         {templates.length === 0 ? (
           <div className="home-empty">
-            暂无已保存模板，点击上方「新建标签模板」开始
+            暂无已保存模板，点击上方「新建标签模板」或「添加模板」开始
           </div>
         ) : (
           <ul className="home-list">
@@ -161,6 +193,16 @@ export function HomeScreen({
                   </div>
                 </button>
                 <button
+                  className="tpl-export"
+                  title="导出模板"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onExport(tpl)
+                  }}
+                >
+                  <Download size={14} />
+                </button>
+                <button
                   className="tpl-delete"
                   title="删除模板"
                   onClick={(e) => {
@@ -190,6 +232,16 @@ export function HomeScreen({
             }}
           >
             打开
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onExport(menu.tpl)
+              setMenu(null)
+            }}
+          >
+            <Download size={14} />
+            导出模板
           </button>
           <button
             type="button"
@@ -290,6 +342,10 @@ export function HomeScreen({
           </div>,
           document.body,
         )}
+      <FeedbackLogDialog
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+      />
     </div>
   )
 }

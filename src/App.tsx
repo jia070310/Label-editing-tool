@@ -17,6 +17,7 @@ import type {
   TableElement,
 } from './types'
 import { defaultLabelSettings } from './types'
+import { fitNewElementToLabel } from './utils/fitElement'
 import {
   createBarcodeElement,
   createLineElement,
@@ -32,10 +33,14 @@ import {
   MAX_TABLE_ROWS,
   mergeCells,
   resizeTableBox,
+  resizeColInRows,
+  resizeRowInCols,
   setColWidth,
   setRowHeight,
   setTableCols,
   setTableRows,
+  moveColBoundaryInRows,
+  moveRowBoundaryInCols,
   splitCell,
   updateCell,
   updateCells,
@@ -46,10 +51,13 @@ import {
   loadTemplates,
   MM_TO_PX,
   nextDefaultName,
+  parseTemplateFile,
+  prepareImportedTemplate,
   renameTemplate,
   type LabelTemplate,
   upsertTemplate,
 } from './utils/storage'
+import { exportTemplateFile, pickTemplateFileContent } from './utils/templateIo'
 import { mmStyle, mmToPx } from './utils/dpi'
 import { PrintDialog } from './components/PrintDialog'
 import { BatchPrintDialog } from './components/BatchPrintDialog'
@@ -136,39 +144,51 @@ function paintElementBox(
 
 function createElement(
   type: ElementType | 'image' | 'date' | 'warning',
+  labelW: number,
+  labelH: number,
 ): LabelElement | null {
+  let el: LabelElement | null = null
   switch (type) {
     case 'table':
-      return createTableElement(5, 5)
+      el = createTableElement(5, 5)
+      break
     case 'text':
-      return createTextElement(2, 2)
+      el = createTextElement(2, 2)
+      break
     case 'rect':
-      return createRectElement(2, 2)
+      el = createRectElement(2, 2)
+      break
     case 'line':
-      return createLineElement(2, 10)
+      el = createLineElement(2, 10)
+      break
     case 'barcode':
-      return createBarcodeElement(2, 2)
+      el = createBarcodeElement(2, 2)
+      break
     case 'qrcode':
-      return createQrcodeElement(2, 2)
+      el = createQrcodeElement(2, 2)
+      break
     case 'date': {
-      const el = createTextElement(2, 2)
-      el.content = new Date().toLocaleDateString('zh-CN')
-      el.width = 28
-      return el
+      const dateEl = createTextElement(2, 2)
+      dateEl.content = new Date().toLocaleDateString('zh-CN')
+      dateEl.width = 28
+      el = dateEl
+      break
     }
     case 'warning': {
-      const el = createTextElement(2, 2)
-      el.content = '注意：请远离火源'
-      el.color = '#c0392b'
-      el.fontWeight = 'bold'
-      el.width = 36
-      return el
+      const warnEl = createTextElement(2, 2)
+      warnEl.content = '注意：请远离火源'
+      warnEl.color = '#c0392b'
+      warnEl.fontWeight = 'bold'
+      warnEl.width = 36
+      el = warnEl
+      break
     }
     case 'image':
       return null
     default:
-      return createTextElement()
+      el = createTextElement()
   }
+  return el ? fitNewElementToLabel(el, labelW, labelH) : null
 }
 
 function Ruler({
@@ -492,7 +512,7 @@ export default function App() {
       alert('图片功能可后续接入本地上传')
       return
     }
-    const el = createElement(type)
+    const el = createElement(type, settings.width, settings.height)
     if (!el) return
     // 新控件置于最上层，避免被大表格挡住
     updateElements((list) => [...list, el])
@@ -878,6 +898,102 @@ export default function App() {
       patchElement(
         id,
         (el) => setRowHeight(el as TableElement, index, height),
+        false,
+      )
+    },
+    [patchElement],
+  )
+
+  const handleTableResizeColInRows = useCallback(
+    (
+      id: string,
+      leftIndex: number,
+      leftWidth: number,
+      rowStart: number,
+      rowEndExclusive: number,
+    ) => {
+      patchElement(
+        id,
+        (el) =>
+          resizeColInRows(
+            el as TableElement,
+            leftIndex,
+            leftWidth,
+            rowStart,
+            rowEndExclusive,
+          ),
+        false,
+      )
+    },
+    [patchElement],
+  )
+
+  const handleTableResizeRowInCols = useCallback(
+    (
+      id: string,
+      topIndex: number,
+      topHeight: number,
+      colStart: number,
+      colEndExclusive: number,
+    ) => {
+      patchElement(
+        id,
+        (el) =>
+          resizeRowInCols(
+            el as TableElement,
+            topIndex,
+            topHeight,
+            colStart,
+            colEndExclusive,
+          ),
+        false,
+      )
+    },
+    [patchElement],
+  )
+
+  const handleTableMoveColBoundaryInRows = useCallback(
+    (
+      id: string,
+      leftIndex: number,
+      leftWidth: number,
+      rowStart: number,
+      rowEndExclusive: number,
+    ) => {
+      patchElement(
+        id,
+        (el) =>
+          moveColBoundaryInRows(
+            el as TableElement,
+            leftIndex,
+            leftWidth,
+            rowStart,
+            rowEndExclusive,
+          ),
+        false,
+      )
+    },
+    [patchElement],
+  )
+
+  const handleTableMoveRowBoundaryInCols = useCallback(
+    (
+      id: string,
+      topIndex: number,
+      topHeight: number,
+      colStart: number,
+      colEndExclusive: number,
+    ) => {
+      patchElement(
+        id,
+        (el) =>
+          moveRowBoundaryInCols(
+            el as TableElement,
+            topIndex,
+            topHeight,
+            colStart,
+            colEndExclusive,
+          ),
         false,
       )
     },
@@ -1270,6 +1386,51 @@ export default function App() {
     alert('模板已保存')
   }
 
+  const exportOneTemplate = async (tpl: LabelTemplate) => {
+    try {
+      const result = await exportTemplateFile(tpl)
+      if (result.cancelled) return
+      if (result.ok) {
+        alert(result.path ? `模板已导出到：\n${result.path}` : '模板已导出')
+      } else {
+        alert('导出失败，请重试')
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '导出失败')
+    }
+  }
+
+  const exportCurrentTemplate = async () => {
+    if (!templateId) return
+    const tpl: LabelTemplate = {
+      id: templateId,
+      settings,
+      elements: structuredClone(elements),
+      createdAt:
+        templates.find((t) => t.id === templateId)?.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+    }
+    // 导出前顺带写入本地库，避免文件与当前编辑不一致
+    setTemplates(upsertTemplate(tpl))
+    await exportOneTemplate(tpl)
+  }
+
+  const importTemplate = async () => {
+    try {
+      const content = await pickTemplateFileContent()
+      if (content == null) return
+      const parsed = parseTemplateFile(content)
+      const existing = loadTemplates()
+      const next = prepareImportedTemplate(parsed, existing)
+      setTemplates(upsertTemplate(next))
+      if (confirm(`已添加模板「${next.settings.name}」，是否立即打开？`)) {
+        openEditor(next)
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '导入失败')
+    }
+  }
+
   const sheetRadius =
     settings.shape === 'circle'
       ? '50%'
@@ -1289,6 +1450,8 @@ export default function App() {
           onOpen={openEditor}
           onDelete={(id) => setTemplates(deleteTemplate(id))}
           onRename={(id, name) => setTemplates(renameTemplate(id, name))}
+          onExport={(tpl) => void exportOneTemplate(tpl)}
+          onImport={() => void importTemplate()}
         />
         <NewLabelDialog
           key={showNewDialog ? nextDefaultName(templates) : 'closed'}
@@ -1326,6 +1489,7 @@ export default function App() {
         }}
         onBatchPrint={() => setShowBatchPrintDialog(true)}
         onSave={saveTemplate}
+        onExportTemplate={() => void exportCurrentTemplate()}
         onHome={goHome}
         onOpenSettings={() => setShowSettingsDialog(true)}
         selected={selected}
@@ -1373,7 +1537,8 @@ export default function App() {
                   width: mmToPx(settings.width),
                   height: mmToPx(settings.height),
                   transform: `scale(${zoom})`,
-                  ['--ui-zoom' as string]: zoom,
+                  // 必须是无单位数字；React 对 number 会加成 px，导致 1/zoom 失效
+                  ['--ui-zoom' as string]: String(zoom),
                 }}
               >
                 <div
@@ -1422,6 +1587,14 @@ export default function App() {
                       onTableGridResizeStart={handleTableGridResizeStart}
                       onTableColWidth={handleTableColWidth}
                       onTableRowHeight={handleTableRowHeight}
+                      onTableResizeColInRows={handleTableResizeColInRows}
+                      onTableResizeRowInCols={handleTableResizeRowInCols}
+                      onTableMoveColBoundaryInRows={
+                        handleTableMoveColBoundaryInRows
+                      }
+                      onTableMoveRowBoundaryInCols={
+                        handleTableMoveRowBoundaryInCols
+                      }
                       onTableMoveStart={onTableMoveStart}
                       onInsertTableRows={handleInsertTableRows}
                       onInsertTableCols={handleInsertTableCols}

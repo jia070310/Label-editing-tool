@@ -4,4 +4,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   printLabel: (payload) => ipcRenderer.invoke('print-label', payload),
   getPrinters: () => ipcRenderer.invoke('get-printers'),
+  getPrintLogPath: () => ipcRenderer.invoke('get-print-log-path'),
+  openPrintLog: () => ipcRenderer.invoke('open-print-log'),
+  reportClientError: (payload) =>
+    ipcRenderer.invoke('report-client-error', payload),
+  exportFeedbackLog: (payload) =>
+    ipcRenderer.invoke('export-feedback-log', payload || {}),
+  saveTextFile: (payload) => ipcRenderer.invoke('save-text-file', payload),
+  openTextFile: (payload) => ipcRenderer.invoke('open-text-file', payload || {}),
 })

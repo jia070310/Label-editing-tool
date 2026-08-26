@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { reportClientError } from './utils/feedback'
 
 function hideBootSplash() {
   const splash = document.getElementById('boot-splash')
@@ -13,6 +14,13 @@ function setBootText(text: string) {
   const el = document.getElementById('boot-splash-text')
   if (el) el.textContent = text
 }
+
+window.addEventListener('error', (ev) => {
+  void reportClientError(ev.error || ev.message, { kind: 'window-error' })
+})
+window.addEventListener('unhandledrejection', (ev) => {
+  void reportClientError(ev.reason, { kind: 'unhandledrejection' })
+})
 
 async function boot() {
   const rootEl = document.getElementById('root')
@@ -41,6 +49,7 @@ async function boot() {
     })
   } catch (err) {
     console.error(err)
+    void reportClientError(err, { kind: 'boot-failure' })
     setBootText('启动失败，请重启应用')
   }
 }

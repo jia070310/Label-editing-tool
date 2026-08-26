@@ -60,6 +60,29 @@ export function RightPanel({
         </div>
         <div className="panel-body">
           <div className="empty-hint">选择画布上的元素以编辑属性</div>
+          <div className="panel-section">
+            <h4>表格分隔线</h4>
+            <ul className="panel-help-list">
+              <li>
+                选中表格后，拖动内部竖线 / 横线调整列宽、行高
+              </li>
+              <li>
+                <kbd>Alt</kbd> + 拖动：移动对齐的一段线（左右/上下对调，外框不变）
+              </li>
+              <li>
+                <kbd>Alt</kbd> + <kbd>A</kbd> + 拖动：只移动当前这一小段
+              </li>
+              <li>普通拖动：改变该段尺寸，表格外框会随之变化</li>
+            </ul>
+          </div>
+          <div className="panel-section">
+            <h4>常用操作</h4>
+            <ul className="panel-help-list">
+              <li>顶部「保存」写入本地模板库</li>
+              <li>首页可「导出模板」分享文件，或「添加模板」导入</li>
+              <li>Ctrl 多选单元格后可合并</li>
+            </ul>
+          </div>
         </div>
       </aside>
     )
@@ -79,6 +102,17 @@ export function RightPanel({
       safeCells.length > 0
         ? table.cells[safeCells[0].row][safeCells[0].col]
         : null
+    const activePos = safeCells[0] ?? null
+    const displayRowHeights = activePos
+      ? table.rowHeights.map(
+          (_h, i) => table.rowColHeights?.[i]?.[activePos.col] ?? table.rowHeights[i],
+        )
+      : table.rowHeights
+    const displayColWidths = activePos
+      ? table.colWidths.map(
+          (_w, i) => table.rowColWidths?.[activePos.row]?.[i] ?? table.colWidths[i],
+        )
+      : table.colWidths
     const splitPos = safeCells[0]
     const mergeEnabled = canMerge(table, safeCells)
     const splitEnabled = splitPos ? canSplit(table, splitPos) : false
@@ -100,6 +134,24 @@ export function RightPanel({
               </button>
             </div>
             <p className="hint">按住 Ctrl 多选单元格后可合并</p>
+          </div>
+
+          <div className="panel-section">
+            <h4>分隔线拖动</h4>
+            <ul className="panel-help-list">
+              <li>
+                <strong>普通拖动</strong>：调整列宽 / 行高，表格外框随之变化
+              </li>
+              <li>
+                <kbd>Alt</kbd> + 拖动：移动当前对齐的一整段线，邻格对调宽度/高度，外框尺寸不变
+              </li>
+              <li>
+                <kbd>Alt</kbd> + <kbd>A</kbd> + 拖动：只挪当前一小段，不影响其它已错位的段
+              </li>
+            </ul>
+            <p className="hint">
+              合并单元格后，拖动范围会自动覆盖合并区域；各行总宽、各列总高始终对齐，避免外沿参差。
+            </p>
           </div>
 
           <div className="panel-section">
@@ -424,7 +476,7 @@ export function RightPanel({
           <div className="panel-section">
             <h4>行高设置 (mm)</h4>
             <div className="row-height-list">
-              {table.rowHeights.map((h, i) => (
+              {displayRowHeights.map((h, i) => (
                 <div className="row-height-item" key={i}>
                   <span>行 {i + 1}</span>
                   <NumericDraftInput
@@ -441,7 +493,7 @@ export function RightPanel({
           <div className="panel-section">
             <h4>列宽设置 (mm)</h4>
             <div className="row-height-list">
-              {table.colWidths.map((w, i) => (
+              {displayColWidths.map((w, i) => (
                 <div className="row-height-item" key={i}>
                   <span>列 {i + 1}</span>
                   <NumericDraftInput

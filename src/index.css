@@ -280,17 +280,17 @@ button {
   left: 0;
   transform-origin: top left;
   overflow: visible;
-  /* 画布 zoom 缩放后，交互 UI 按 1/zoom 反算，保持屏幕像素观感一致 */
+  /* 画布 zoom 缩放后，交互 UI 按 1/zoom 反算，保持屏幕约 1.5px 粗细 */
   --ui-zoom: 1;
-  --ui-stroke: clamp(calc(1px / var(--ui-zoom)), calc(1.5px / var(--ui-zoom)), calc(2px / var(--ui-zoom)));
-  --ui-handle-size: clamp(calc(5px / var(--ui-zoom)), calc(7px / var(--ui-zoom)), calc(10px / var(--ui-zoom)));
+  --ui-stroke: calc(1.5px / var(--ui-zoom));
+  --ui-handle-size: calc(7px / var(--ui-zoom));
   --ui-handle-offset: calc(var(--ui-handle-size) / 2);
-  --ui-hit: clamp(calc(10px / var(--ui-zoom)), calc(12px / var(--ui-zoom)), calc(16px / var(--ui-zoom)));
+  --ui-hit: calc(12px / var(--ui-zoom));
   --ui-hit-offset: calc(var(--ui-hit) / 2);
-  --ui-cross-size: clamp(calc(10px / var(--ui-zoom)), calc(12px / var(--ui-zoom)), calc(14px / var(--ui-zoom)));
+  --ui-cross-size: calc(12px / var(--ui-zoom));
   --ui-cross-offset: calc(var(--ui-cross-size) / 2);
-  --ui-cross-arm: clamp(calc(8px / var(--ui-zoom)), calc(10px / var(--ui-zoom)), calc(12px / var(--ui-zoom)));
-  --ui-handle-pad: clamp(calc(4px / var(--ui-zoom)), calc(5px / var(--ui-zoom)), calc(6px / var(--ui-zoom)));
+  --ui-cross-arm: calc(10px / var(--ui-zoom));
+  --ui-handle-pad: calc(5px / var(--ui-zoom));
 }
 
 .label-sheet {
@@ -468,10 +468,10 @@ button {
   color: var(--text-muted);
 }
 
-.tpl-delete {
+.tpl-delete,
+.tpl-export {
   position: absolute;
   top: 10px;
-  right: 10px;
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -483,8 +483,23 @@ button {
   justify-content: center;
 }
 
-.home-list li:hover .tpl-delete {
+.tpl-export {
+  right: 44px;
+}
+
+.tpl-delete {
+  right: 10px;
+}
+
+.home-list li:hover .tpl-delete,
+.home-list li:hover .tpl-export {
   display: inline-flex;
+}
+
+.tpl-export:hover {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
 
 .tpl-delete:hover {
@@ -880,6 +895,26 @@ button {
 .form-error {
   margin: 0 0 8px;
   color: #c0392b;
+  font-size: 12px;
+}
+
+.print-error-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.print-error-block p {
+  margin: 0;
+  text-align: center;
+  word-break: break-all;
+}
+
+.print-log-btn {
+  height: 32px;
+  padding: 0 12px;
   font-size: 12px;
 }
 
@@ -1782,27 +1817,41 @@ body.table-moving * {
   box-sizing: border-box;
 }
 
-.table-el td {
-  padding: 0;
+.table-el-abs {
+  position: relative;
   overflow: hidden;
-  vertical-align: top;
+}
+
+.table-el .table-cell {
+  overflow: hidden;
   cursor: cell;
   word-break: break-word;
+}
+
+.table-el td,
+.table-el .table-cell {
+  padding: 0;
   box-sizing: border-box;
+}
+
+.table-el td {
+  vertical-align: top;
   /* 配合固定表高 + 百分比行高，禁止内容把表格撑破选中框 */
   height: 0;
 }
 
-.table-el td.selected-cell {
+.table-el td.selected-cell,
+.table-el .table-cell.selected-cell {
   outline: none;
-  /* 用与表格线同宽的内描边贴合黑线，避免 outline 错位 */
-  box-shadow: inset 0 0 0 var(--table-border-width, 1px) var(--accent);
+  /* 高亮线用屏幕像素描边（随 zoom 反算），不跟表格物理线宽走 */
+  box-shadow: inset 0 0 0 var(--ui-stroke) var(--accent);
   background: var(--accent-soft) !important;
 }
 
-.table-el td.editing {
+.table-el td.editing,
+.table-el .table-cell.editing {
   outline: none;
-  box-shadow: inset 0 0 0 var(--table-border-width, 1px) #3b82f6;
+  box-shadow: inset 0 0 0 var(--ui-stroke) #3b82f6;
 }
 
 .table-el .cell-inner {
@@ -1815,7 +1864,8 @@ body.table-moving * {
   line-height: 1.25;
 }
 
-.table-el td:not(.editing) .cell-text {
+.table-el td:not(.editing) .cell-text,
+.table-el .table-cell:not(.editing) .cell-text {
   user-select: none;
 }
 
@@ -2111,6 +2161,54 @@ body.table-moving * {
   font-weight: 600;
 }
 
+.panel-hint {
+  margin: -2px 0 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.panel-hint kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--text);
+}
+
+.panel-mode-btn {
+  flex: 1;
+  height: 34px;
+  margin-bottom: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.panel-mode-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.panel-mode-btn:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.panel-mode-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .panel-row {
   display: flex;
   align-items: center;
@@ -2199,6 +2297,35 @@ body.table-moving * {
   line-height: 1.45;
 }
 
+.panel-help-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.panel-help-list li {
+  margin-bottom: 6px;
+}
+
+.panel-help-list strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.panel-help-list kbd,
+.panel-hint kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--text);
+}
+
 .row-height-list {
   display: flex;
   flex-direction: column;
@@ -2263,6 +2390,32 @@ body.table-moving * {
 .error-boundary .btn-create,
 .error-boundary .btn-secondary {
   min-width: 120px;
+}
+
+.error-boundary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.feedback-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.feedback-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.feedback-done {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #1f7a3f;
+  word-break: break-all;
+  line-height: 1.5;
 }
 
 .empty-hint {
