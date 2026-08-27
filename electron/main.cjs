@@ -366,11 +366,6 @@ async function exportFeedbackBundle() {
 
   fs.writeFileSync(filePath, body, 'utf8')
   appendAppLog('feedback exported', { filePath })
-  try {
-    shell.showItemInFolder(filePath)
-  } catch {
-    /* ignore */
-  }
   return { ok: true, path: filePath }
 }
 
@@ -919,11 +914,6 @@ app.whenReady().then(() => {
     )
     if (canceled || !filePath) return { ok: false, cancelled: true }
     fs.writeFileSync(filePath, String(payload.content ?? ''), 'utf8')
-    try {
-      shell.showItemInFolder(filePath)
-    } catch {
-      /* ignore */
-    }
     return { ok: true, path: filePath }
   })
 
