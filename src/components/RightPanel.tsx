@@ -70,7 +70,7 @@ export function RightPanel({
                 <kbd>Alt</kbd> + 拖动：移动对齐的一段线（左右/上下对调，外框不变）
               </li>
               <li>
-                <kbd>Alt</kbd> + <kbd>A</kbd> + 拖动：只移动当前这一小段
+                <kbd>Alt</kbd> + <kbd>Q</kbd> + 拖动：只移动当前这一小段
               </li>
               <li>普通拖动：改变该段尺寸，表格外框会随之变化</li>
             </ul>
@@ -146,7 +146,7 @@ export function RightPanel({
                 <kbd>Alt</kbd> + 拖动：移动当前对齐的一整段线，邻格对调宽度/高度，外框尺寸不变
               </li>
               <li>
-                <kbd>Alt</kbd> + <kbd>A</kbd> + 拖动：只挪当前一小段，不影响其它已错位的段
+                <kbd>Alt</kbd> + <kbd>Q</kbd> + 拖动：只挪当前一小段，不影响其它已错位的段
               </li>
             </ul>
             <p className="hint">

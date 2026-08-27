@@ -36,10 +36,10 @@ export function createTableCells(rows: number, cols: number): TableCell[][] {
 }
 
 export function createTableElement(x = 5, y = 5): TableElement {
-  const rows = 4
-  const cols = 2
-  const rowHeights = Array.from({ length: rows }, () => 8)
-  const colWidths = Array.from({ length: cols }, () => 25)
+  const rows = DEFAULT_TABLE_ROWS
+  const cols = DEFAULT_TABLE_COLS
+  const rowHeights = Array.from({ length: rows }, () => DEFAULT_TABLE_ROW_HEIGHT)
+  const colWidths = Array.from({ length: cols }, () => DEFAULT_TABLE_COL_WIDTH)
   const cells = createTableCells(rows, cols)
   cells[0][0] = createEmptyCell({
     content: '',
@@ -65,7 +65,7 @@ export function createTableElement(x = 5, y = 5): TableElement {
     colWidths,
     rowColWidths: Array.from({ length: rows }, () => [...colWidths]),
     rowColHeights: Array.from({ length: rows }, () =>
-      Array.from({ length: cols }, () => 8),
+      Array.from({ length: cols }, () => DEFAULT_TABLE_ROW_HEIGHT),
     ),
     borderWidth: 0.2,
     borderColor: '#222222',
@@ -173,6 +173,20 @@ export function createQrcodeElement(x = 5, y = 5): QrcodeElement {
 
 export const MAX_TABLE_ROWS = 40
 export const MAX_TABLE_COLS = 20
+/** 未缩放时的种子尺寸（与 createTableElement 一致；实际新增会按标签适配） */
+export const DEFAULT_TABLE_ROWS = 4
+export const DEFAULT_TABLE_COLS = 2
+export const DEFAULT_TABLE_ROW_HEIGHT = 8
+export const DEFAULT_TABLE_COL_WIDTH = 25
+
+export type TableUnitSize = { rowH: number; colW: number }
+
+function resolveUnitSize(unit?: TableUnitSize): TableUnitSize {
+  return {
+    rowH: Math.max(2, unit?.rowH ?? DEFAULT_TABLE_ROW_HEIGHT),
+    colW: Math.max(4, unit?.colW ?? DEFAULT_TABLE_COL_WIDTH),
+  }
+}
 
 /** 边界对齐容差（mm）：错位后的线段不视为同一整线 */
 const BOUNDARY_ALIGN_EPS = 0.08
@@ -595,6 +609,82 @@ export function buildRowSegmentsLayout(el: TableElement): GridLineSegment[] {
   return segments
 }
 
+/** 竖线某段内，指针 Y（mm）落在哪一行 */
+export function findRowAtColBoundaryY(
+  el: TableElement,
+  leftIndex: number,
+  spanStart: number,
+  spanEnd: number,
+  yMm: number,
+): number {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const r0 = Math.max(0, Math.min(base.rows, Math.floor(spanStart)))
+  const r1 = Math.max(r0 + 1, Math.min(base.rows, Math.floor(spanEnd)))
+  for (let r = r0; r < r1; r++) {
+    const y0 = Math.max(
+      colStackY(base, leftIndex, r),
+      colStackY(base, leftIndex + 1, r),
+    )
+    const y1 = Math.min(
+      colStackY(base, leftIndex, r + 1),
+      colStackY(base, leftIndex + 1, r + 1),
+    )
+    if (yMm >= y0 - 0.05 && yMm <= y1 + 0.05) return r
+  }
+  // 落在段外时取最近行
+  let best = r0
+  let bestD = Infinity
+  for (let r = r0; r < r1; r++) {
+    const mid =
+      (Math.max(colStackY(base, leftIndex, r), colStackY(base, leftIndex + 1, r)) +
+        Math.min(
+          colStackY(base, leftIndex, r + 1),
+          colStackY(base, leftIndex + 1, r + 1),
+        )) /
+      2
+    const d = Math.abs(yMm - mid)
+    if (d < bestD) {
+      bestD = d
+      best = r
+    }
+  }
+  return best
+}
+
+/** 横线某段内，指针 X（mm）落在哪一列 */
+export function findColAtRowBoundaryX(
+  el: TableElement,
+  topIndex: number,
+  spanStart: number,
+  spanEnd: number,
+  xMm: number,
+): number {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const c0 = Math.max(0, Math.min(base.cols, Math.floor(spanStart)))
+  const c1 = Math.max(c0 + 1, Math.min(base.cols, Math.floor(spanEnd)))
+  const widths = getRowColWidths(base, topIndex)
+  let x = widths.slice(0, c0).reduce((a, b) => a + b, 0)
+  for (let c = c0; c < c1; c++) {
+    const w = widths[c] ?? 4
+    if (xMm >= x - 0.05 && xMm <= x + w + 0.05) return c
+    x += w
+  }
+  let best = c0
+  let bestD = Infinity
+  let acc = widths.slice(0, c0).reduce((a, b) => a + b, 0)
+  for (let c = c0; c < c1; c++) {
+    const w = widths[c] ?? 4
+    const mid = acc + w / 2
+    const d = Math.abs(xMm - mid)
+    if (d < bestD) {
+      bestD = d
+      best = c
+    }
+    acc += w
+  }
+  return best
+}
+
 /** Boundary X after leftIndex in a row (sum of widths[0..leftIndex]) */
 export function colBoundaryX(
   el: TableElement,
@@ -780,6 +870,7 @@ export function moveColBoundaryInRows(
   leftWidth: number,
   rowStart: number,
   rowEnd: number,
+  expandMerge = true,
 ): TableElement {
   const base = ensureRowColHeights(ensureRowColWidths(el))
   const lockedW = base.width > 0 ? base.width : tableContentWidth(base)
@@ -790,7 +881,9 @@ export function moveColBoundaryInRows(
   }
   let r0 = Math.max(0, Math.min(base.rows, Math.floor(rowStart)))
   let r1 = Math.max(r0, Math.min(base.rows, Math.floor(rowEnd)))
-  ;[r0, r1] = expandRowRangeForColBoundary(base, leftIndex, r0, r1)
+  if (expandMerge) {
+    ;[r0, r1] = expandRowRangeForColBoundary(base, leftIndex, r0, r1)
+  }
   let rowColWidths = base.rowColWidths!.map((row, ri) => {
     if (ri < r0 || ri >= r1) return [...row]
     const sum = (row[leftIndex] ?? 4) + (row[rightIndex] ?? 4)
@@ -817,6 +910,7 @@ export function moveRowBoundaryInCols(
   topHeight: number,
   colStart: number,
   colEnd: number,
+  expandMerge = true,
 ): TableElement {
   const base = ensureRowColHeights(ensureRowColWidths(el))
   const lockedW = base.width > 0 ? base.width : tableContentWidth(base)
@@ -827,7 +921,9 @@ export function moveRowBoundaryInCols(
   }
   let c0 = Math.max(0, Math.min(base.cols, Math.floor(colStart)))
   let c1 = Math.max(c0, Math.min(base.cols, Math.floor(colEnd)))
-  ;[c0, c1] = expandColRangeForRowBoundary(base, topIndex, c0, c1)
+  if (expandMerge) {
+    ;[c0, c1] = expandColRangeForRowBoundary(base, topIndex, c0, c1)
+  }
   let rowColHeights = base.rowColHeights!.map((row) => [...row])
   for (let c = c0; c < c1; c++) {
     const sum =
@@ -960,7 +1056,25 @@ function clampMergedCells(el: TableElement): TableElement {
   return { ...el, cells }
 }
 
-export function setTableRows(el: TableElement, rows: number): TableElement {
+function rowSpanHeight(row: number[] | undefined, fallback: number): number {
+  if (!row?.length) return Math.max(2, fallback)
+  return Math.max(2, ...row.map((h) => Math.max(2, h ?? fallback)))
+}
+
+function colSpanWidth(colIndex: number, rows: number[][], fallback: number): number {
+  let max = 0
+  for (const row of rows) {
+    max = Math.max(max, Math.max(4, row[colIndex] ?? fallback))
+  }
+  return max || Math.max(4, fallback)
+}
+
+export function setTableRows(
+  el: TableElement,
+  rows: number,
+  unit?: TableUnitSize,
+): TableElement {
+  const { rowH: newRowH } = resolveUnitSize(unit)
   const base = ensureRowColHeights(ensureRowColWidths(el))
   const next = Math.min(MAX_TABLE_ROWS, Math.max(1, Math.floor(rows)))
   let cells = cloneCells(base.cells)
@@ -968,16 +1082,27 @@ export function setTableRows(el: TableElement, rows: number): TableElement {
   let rowColWidths = base.rowColWidths!.map((r) => [...r])
   let rowColHeights = base.rowColHeights!.map((r) => [...r])
   const cols = base.cols
+  const oldH = base.height > 0 ? base.height : tableContentHeight(base)
+  const oldW = base.width > 0 ? base.width : tableContentWidth(base)
+  let newH = oldH
   if (next > base.rows) {
+    const add = next - base.rows
     const template = [...(rowColWidths[base.rows - 1] ?? base.colWidths)]
-    const hTemplate = Array.from({ length: cols }, () => 8)
+    const hTemplate = Array.from({ length: cols }, () => newRowH)
     for (let r = base.rows; r < next; r++) {
       cells.push(Array.from({ length: cols }, () => createEmptyCell()))
-      rowHeights.push(8)
+      rowHeights.push(newRowH)
       rowColWidths.push([...template])
       rowColHeights.push([...hTemplate])
     }
+    // 向外增高：按「当前标签默认表格」的单行高扩展
+    newH = oldH + add * newRowH
   } else if (next < base.rows) {
+    let removed = 0
+    for (let r = next; r < base.rows; r++) {
+      removed += rowSpanHeight(rowColHeights[r], rowHeights[r] ?? newRowH)
+    }
+    newH = Math.max(next * 2, oldH - removed)
     cells = cells.slice(0, next)
     rowHeights = rowHeights.slice(0, next)
     rowColWidths = rowColWidths.slice(0, next)
@@ -986,6 +1111,8 @@ export function setTableRows(el: TableElement, rows: number): TableElement {
   return clampMergedCells(
     syncTableSize({
       ...base,
+      width: oldW,
+      height: newH,
       rows: next,
       cells,
       rowHeights,
@@ -996,28 +1123,44 @@ export function setTableRows(el: TableElement, rows: number): TableElement {
   )
 }
 
-export function setTableCols(el: TableElement, cols: number): TableElement {
+export function setTableCols(
+  el: TableElement,
+  cols: number,
+  unit?: TableUnitSize,
+): TableElement {
+  const { rowH: newRowH, colW: newColW } = resolveUnitSize(unit)
   const base = ensureRowColHeights(ensureRowColWidths(el))
   const next = Math.min(MAX_TABLE_COLS, Math.max(1, Math.floor(cols)))
   let cells = cloneCells(base.cells)
   let colWidths = [...base.colWidths]
   let rowColWidths = base.rowColWidths!.map((r) => [...r])
   let rowColHeights = base.rowColHeights!.map((r) => [...r])
+  const oldH = base.height > 0 ? base.height : tableContentHeight(base)
+  const oldW = base.width > 0 ? base.width : tableContentWidth(base)
+  let newW = oldW
   if (next > base.cols) {
+    const addN = next - base.cols
     cells = cells.map((row) => [
       ...row,
-      ...Array.from({ length: next - base.cols }, () => createEmptyCell()),
+      ...Array.from({ length: addN }, () => createEmptyCell()),
     ])
-    const add = Array.from({ length: next - base.cols }, () => 20)
+    const add = Array.from({ length: addN }, () => newColW)
     colWidths = [...colWidths, ...add]
     rowColWidths = rowColWidths.map((r) => [...r, ...add])
     rowColHeights = rowColHeights.map((rowH, r) => [
       ...rowH,
-      ...Array.from({ length: next - base.cols }, () =>
-        Math.max(2, base.rowHeights[r] ?? 8),
+      ...Array.from({ length: addN }, () =>
+        Math.max(2, base.rowHeights[r] ?? newRowH),
       ),
     ])
+    // 向外加宽：按「当前标签默认表格」的单列宽扩展
+    newW = oldW + addN * newColW
   } else if (next < base.cols) {
+    let removed = 0
+    for (let c = next; c < base.cols; c++) {
+      removed += colSpanWidth(c, rowColWidths, colWidths[c] ?? newColW)
+    }
+    newW = Math.max(next * 4, oldW - removed)
     cells = cells.map((row) => row.slice(0, next))
     colWidths = colWidths.slice(0, next)
     rowColWidths = rowColWidths.map((r) => r.slice(0, next))
@@ -1026,6 +1169,8 @@ export function setTableCols(el: TableElement, cols: number): TableElement {
   return clampMergedCells(
     syncTableSize({
       ...base,
+      width: newW,
+      height: oldH,
       cols: next,
       cells,
       colWidths,
@@ -1041,6 +1186,7 @@ export function insertRows(
   atRow: number,
   count: number,
   where: 'above' | 'below',
+  unit?: TableUnitSize,
 ): TableElement | null {
   const n = Math.floor(count)
   if (n < 1) return null
@@ -1055,7 +1201,8 @@ export function insertRows(
 
   const cells = cloneCells(el.cells)
   const rowHeights = [...el.rowHeights]
-  const defaultH = rowHeights[row] ?? 8
+  // 使用当前标签下默认新建表格的单行高
+  const { rowH: newRowH } = resolveUnitSize(unit)
 
   // 跨越插入位置的合并单元格：扩大 rowspan，并记录覆盖列
   const spanningCols = new Set<number>()
@@ -1075,7 +1222,7 @@ export function insertRows(
       createEmptyCell({ covered: spanningCols.has(c) }),
     ),
   )
-  const blankHeights = Array.from({ length: insertCount }, () => defaultH)
+  const blankHeights = Array.from({ length: insertCount }, () => newRowH)
   const base = ensureRowColHeights(ensureRowColWidths(el))
   const template = [...(base.rowColWidths![row] ?? base.colWidths)]
   const blankRowCols = Array.from({ length: insertCount }, () => [...template])
@@ -1084,10 +1231,7 @@ export function insertRows(
     ...blankRowCols,
     ...base.rowColWidths!.slice(insertAt),
   ]
-  const hTemplate = [
-    ...(base.rowColHeights![row] ??
-      Array.from({ length: el.cols }, () => defaultH)),
-  ]
+  const hTemplate = Array.from({ length: el.cols }, () => newRowH)
   const blankRowHeights = Array.from({ length: insertCount }, () => [
     ...hTemplate,
   ])
@@ -1096,9 +1240,14 @@ export function insertRows(
     ...blankRowHeights,
     ...base.rowColHeights!.slice(insertAt),
   ]
+  const addH = insertCount * newRowH
+  const oldH = base.height > 0 ? base.height : tableContentHeight(base)
+  const oldW = base.width > 0 ? base.width : tableContentWidth(base)
 
   return syncTableSize({
     ...el,
+    width: oldW,
+    height: oldH + addH,
     rows: el.rows + insertCount,
     cells: [
       ...cells.slice(0, insertAt),
@@ -1122,6 +1271,7 @@ export function insertCols(
   atCol: number,
   count: number,
   where: 'left' | 'right',
+  unit?: TableUnitSize,
 ): TableElement | null {
   const n = Math.floor(count)
   if (n < 1) return null
@@ -1136,7 +1286,8 @@ export function insertCols(
 
   const cells = cloneCells(el.cells)
   const colWidths = [...el.colWidths]
-  const defaultW = colWidths[col] ?? 20
+  // 使用当前标签下默认新建表格的单列宽
+  const { rowH: newRowH, colW: newColW } = resolveUnitSize(unit)
 
   // 跨越插入位置的合并单元格：扩大 colspan，并记录覆盖行
   const spanningRows = new Set<number>()
@@ -1158,7 +1309,7 @@ export function insertCols(
     ),
     ...row.slice(insertAt),
   ])
-  const blankWidths = Array.from({ length: insertCount }, () => defaultW)
+  const blankWidths = Array.from({ length: insertCount }, () => newColW)
   const base = ensureRowColHeights(ensureRowColWidths(el))
   const rowColWidths = base.rowColWidths!.map((rowWidths) => [
     ...rowWidths.slice(0, insertAt),
@@ -1168,13 +1319,18 @@ export function insertCols(
   const rowColHeights = base.rowColHeights!.map((rowH, r) => [
     ...rowH.slice(0, insertAt),
     ...Array.from({ length: insertCount }, () =>
-      Math.max(2, base.rowHeights[r] ?? 8),
+      Math.max(2, base.rowHeights[r] ?? newRowH),
     ),
     ...rowH.slice(insertAt),
   ])
+  const addW = insertCount * newColW
+  const oldH = base.height > 0 ? base.height : tableContentHeight(base)
+  const oldW = base.width > 0 ? base.width : tableContentWidth(base)
 
   return syncTableSize({
     ...el,
+    width: oldW + addW,
+    height: oldH,
     cols: el.cols + insertCount,
     cells: nextCells,
     colWidths: [
@@ -1218,10 +1374,22 @@ export function deleteRows(
   }
 
   const base = ensureRowColHeights(ensureRowColWidths(el))
+  let removedH = 0
+  for (let r = start; r < end; r++) {
+    removedH += rowSpanHeight(
+      base.rowColHeights![r],
+      el.rowHeights[r] ?? 8,
+    )
+  }
+  const oldH = base.height > 0 ? base.height : tableContentHeight(base)
+  const oldW = base.width > 0 ? base.width : tableContentWidth(base)
+  const nextRows = el.rows - deleteCount
   return clampMergedCells(
     syncTableSize({
       ...el,
-      rows: el.rows - deleteCount,
+      width: oldW,
+      height: Math.max(nextRows * 2, oldH - removedH),
+      rows: nextRows,
       cells: [...cells.slice(0, start), ...cells.slice(end)],
       rowHeights: [
         ...el.rowHeights.slice(0, start),
@@ -1268,10 +1436,19 @@ export function deleteCols(
   }
 
   const base = ensureRowColHeights(ensureRowColWidths(el))
+  let removedW = 0
+  for (let c = start; c < end; c++) {
+    removedW += colSpanWidth(c, base.rowColWidths!, el.colWidths[c] ?? 20)
+  }
+  const oldH = base.height > 0 ? base.height : tableContentHeight(base)
+  const oldW = base.width > 0 ? base.width : tableContentWidth(base)
+  const nextCols = el.cols - deleteCount
   return clampMergedCells(
     syncTableSize({
       ...el,
-      cols: el.cols - deleteCount,
+      width: Math.max(nextCols * 4, oldW - removedW),
+      height: oldH,
+      cols: nextCols,
       cells: cells.map((row) => [
         ...row.slice(0, start),
         ...row.slice(end),

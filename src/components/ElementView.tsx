@@ -67,6 +67,7 @@ interface Props {
     leftWidth: number,
     rowStart: number,
     rowEndExclusive: number,
+    expandMerge?: boolean,
   ) => void
   onTableMoveRowBoundaryInCols: (
     id: string,
@@ -74,6 +75,7 @@ interface Props {
     topHeight: number,
     colStart: number,
     colEndExclusive: number,
+    expandMerge?: boolean,
   ) => void
   onTableMoveStart: (e: ReactMouseEvent, id: string) => void
   onInsertTableRows: (
@@ -257,6 +259,7 @@ export const ElementView = memo(function ElementView(props: Props) {
             leftWidth,
             rowStart,
             rowEndExclusive,
+            expandMerge,
           ) =>
             props.onTableMoveColBoundaryInRows(
               element.id,
@@ -264,6 +267,7 @@ export const ElementView = memo(function ElementView(props: Props) {
               leftWidth,
               rowStart,
               rowEndExclusive,
+              expandMerge,
             )
           }
           onGridMoveRowBoundaryInCols={(
@@ -271,6 +275,7 @@ export const ElementView = memo(function ElementView(props: Props) {
             topHeight,
             colStart,
             colEndExclusive,
+            expandMerge,
           ) =>
             props.onTableMoveRowBoundaryInCols(
               element.id,
@@ -278,6 +283,7 @@ export const ElementView = memo(function ElementView(props: Props) {
               topHeight,
               colStart,
               colEndExclusive,
+              expandMerge,
             )
           }
           onTableMoveStart={(e) => props.onTableMoveStart(e, element.id)}

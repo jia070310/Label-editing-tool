@@ -12,6 +12,8 @@ import {
   buildRowSegmentsLayout,
   findAlignedColRowSpan,
   findAlignedRowColSpan,
+  findColAtRowBoundaryX,
+  findRowAtColBoundaryY,
   type GridLineSegment,
 } from '../utils/table'
 import {
@@ -54,6 +56,7 @@ type GridDrag =
       mode: 'move'
       rowStart: number
       rowEndExclusive: number
+      expandMerge: boolean
     }
   | {
       kind: 'row'
@@ -72,6 +75,7 @@ type GridDrag =
       mode: 'move'
       colStart: number
       colEndExclusive: number
+      expandMerge: boolean
     }
 
 type GridHit =
@@ -245,6 +249,7 @@ interface Props {
     leftWidth: number,
     rowStart: number,
     rowEndExclusive: number,
+    expandMerge?: boolean,
   ) => void
   /** Alt：只移动「对齐且连续」的整段边界（水平：成对调上下行高） */
   onGridMoveRowBoundaryInCols: (
@@ -252,6 +257,7 @@ interface Props {
     topHeight: number,
     colStart: number,
     colEndExclusive: number,
+    expandMerge?: boolean,
   ) => void
   onTableMoveStart: (e: ReactMouseEvent) => void
   onInsertRows: (row: number, count: number, where: InsertRowWhere) => void
@@ -303,31 +309,63 @@ export const TableView = memo(function TableView({
       ),
     [element],
   )
-  const totalW = useMemo(
-    () => layout.colWidths.reduce((a, b) => a + b, 0) || 1,
-    [layout.colWidths],
-  )
-  const totalH = useMemo(
-    () => layout.rowHeights.reduce((a, b) => a + b, 0) || 1,
-    [layout.rowHeights],
-  )
+  const totalW = useMemo(() => {
+    if (layout.width > 0) return layout.width
+    const fromRows = layout.rowColWidths?.length
+      ? Math.max(
+          ...layout.rowColWidths.map((r) => r.reduce((a, b) => a + b, 0)),
+          0,
+        )
+      : 0
+    return fromRows || layout.colWidths.reduce((a, b) => a + b, 0) || 1
+  }, [layout.width, layout.rowColWidths, layout.colWidths])
+  const totalH = useMemo(() => {
+    // 必须用锁定外框高，不能用 max(行高) 之和：
+    // Alt+Q 只改一列时后者会变大，百分比布局会把整表往反方向压
+    if (layout.height > 0) return layout.height
+    if (layout.rowColHeights?.length && layout.cols > 0) {
+      let max = 0
+      for (let c = 0; c < layout.cols; c++) {
+        let h = 0
+        for (let r = 0; r < layout.rows; r++) {
+          h += layout.rowColHeights[r]?.[c] ?? layout.rowHeights[r] ?? 0
+        }
+        max = Math.max(max, h)
+      }
+      if (max > 0) return max
+    }
+    return layout.rowHeights.reduce((a, b) => a + b, 0) || 1
+  }, [
+    layout.height,
+    layout.rowColHeights,
+    layout.rowHeights,
+    layout.cols,
+    layout.rows,
+  ])
 
   const showGridResizers = selected && !layout.locked && !editingCell
 
-  const aKeyRef = useRef(false)
+  const qKeyRef = useRef(false)
   useEffect(() => {
+    const isQ = (e: KeyboardEvent) =>
+      e.code === 'KeyQ' || e.key === 'q' || e.key === 'Q'
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'a' || e.key === 'A') aKeyRef.current = true
+      if (isQ(e)) qKeyRef.current = true
     }
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'a' || e.key === 'A') aKeyRef.current = false
-      if (e.key === 'Alt') aKeyRef.current = false
+      if (isQ(e)) qKeyRef.current = false
+      if (e.key === 'Alt') qKeyRef.current = false
+    }
+    const onBlur = () => {
+      qKeyRef.current = false
     }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
     }
   }, [])
 
@@ -412,6 +450,7 @@ export const TableView = memo(function TableView({
               nextW,
               current.rowStart,
               current.rowEndExclusive,
+              current.expandMerge,
             )
           } else {
             onGridResizeColInRows(
@@ -433,6 +472,7 @@ export const TableView = memo(function TableView({
               nextH,
               current.colStart,
               current.colEndExclusive,
+              current.expandMerge,
             )
           } else {
             onGridResizeRowInCols(
@@ -494,15 +534,29 @@ export const TableView = memo(function TableView({
     e: ReactMouseEvent,
     index: number,
     spanStart: number,
-    _spanEnd: number,
+    spanEnd: number,
   ) => {
     e.preventDefault()
     e.stopPropagation()
-    const anchorRow = Math.max(0, Math.min(layout.rows - 1, Math.floor(spanStart)))
+    // 锚点取光标所在行，而不是高亮线段的起点（避免 Alt+Q 挪错行）
+    let anchorRow = Math.max(0, Math.min(layout.rows - 1, Math.floor(spanStart)))
+    if (wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect()
+      if (rect.height > 0) {
+        const yMm = ((e.clientY - rect.top) / rect.height) * totalH
+        anchorRow = findRowAtColBoundaryY(
+          layout,
+          index,
+          spanStart,
+          spanEnd,
+          yMm,
+        )
+      }
+    }
     const widths = getRowColWidths(layout, anchorRow)
     const startWidth = widths[index] ?? layout.colWidths[index] ?? 20
     const isMove = e.altKey
-    const singleSegment = e.altKey && aKeyRef.current
+    const singleSegment = e.altKey && qKeyRef.current
     const range = singleSegment
       ? { rowStart: anchorRow, rowEnd: anchorRow + 1 }
       : findAlignedColRowSpan(layout, index, anchorRow)
@@ -516,6 +570,7 @@ export const TableView = memo(function TableView({
         mode: 'move',
         rowStart: range.rowStart,
         rowEndExclusive: range.rowEnd,
+        expandMerge: !singleSegment,
       }
     } else {
       beginGridDrag('table-grid-resizing-col', false)
@@ -535,17 +590,31 @@ export const TableView = memo(function TableView({
     e: ReactMouseEvent,
     index: number,
     spanStart: number,
-    _spanEnd: number,
+    spanEnd: number,
   ) => {
     e.preventDefault()
     e.stopPropagation()
-    const anchorCol = Math.max(0, Math.min(layout.cols - 1, Math.floor(spanStart)))
+    // 锚点取光标所在列，而不是高亮线段的起点
+    let anchorCol = Math.max(0, Math.min(layout.cols - 1, Math.floor(spanStart)))
+    if (wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect()
+      if (rect.width > 0) {
+        const xMm = ((e.clientX - rect.left) / rect.width) * totalW
+        anchorCol = findColAtRowBoundaryX(
+          layout,
+          index,
+          spanStart,
+          spanEnd,
+          xMm,
+        )
+      }
+    }
     const startHeight =
       layout.rowColHeights?.[index]?.[anchorCol] ??
       layout.rowHeights[index] ??
       8
     const isMove = e.altKey
-    const singleSegment = e.altKey && aKeyRef.current
+    const singleSegment = e.altKey && qKeyRef.current
     const range = singleSegment
       ? { colStart: anchorCol, colEnd: anchorCol + 1 }
       : findAlignedRowColSpan(layout, index, anchorCol)
@@ -559,6 +628,7 @@ export const TableView = memo(function TableView({
         mode: 'move',
         colStart: range.colStart,
         colEndExclusive: range.colEnd,
+        expandMerge: !singleSegment,
       }
     } else {
       beginGridDrag('table-grid-resizing-row', false)
@@ -697,7 +767,7 @@ export const TableView = memo(function TableView({
         .join(' ')}
       title={
         showGridResizers
-          ? '拖分隔线调整尺寸；Alt=移动对齐整段；Alt+A=仅移动当前单段'
+          ? '拖分隔线调整尺寸；Alt=移动对齐整段；Alt+Q=仅移动当前单段'
           : undefined
       }
       onMouseMove={handleWrapMouseMove}

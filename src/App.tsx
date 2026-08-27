@@ -17,7 +17,7 @@ import type {
   TableElement,
 } from './types'
 import { defaultLabelSettings } from './types'
-import { fitNewElementToLabel } from './utils/fitElement'
+import { defaultFittedTableUnitSize, fitNewElementToLabel } from './utils/fitElement'
 import {
   createBarcodeElement,
   createLineElement,
@@ -959,6 +959,7 @@ export default function App() {
       leftWidth: number,
       rowStart: number,
       rowEndExclusive: number,
+      expandMerge = true,
     ) => {
       patchElement(
         id,
@@ -969,6 +970,7 @@ export default function App() {
             leftWidth,
             rowStart,
             rowEndExclusive,
+            expandMerge,
           ),
         false,
       )
@@ -983,6 +985,7 @@ export default function App() {
       topHeight: number,
       colStart: number,
       colEndExclusive: number,
+      expandMerge = true,
     ) => {
       patchElement(
         id,
@@ -993,6 +996,7 @@ export default function App() {
             topHeight,
             colStart,
             colEndExclusive,
+            expandMerge,
           ),
         false,
       )
@@ -1018,9 +1022,10 @@ export default function App() {
 
   const handleInsertTableRows = useCallback(
     (id: string, row: number, count: number, where: 'above' | 'below') => {
+      const unit = defaultFittedTableUnitSize(settings.width, settings.height)
       patchElement(id, (el) => {
         if (el.type !== 'table') return el
-        return insertRows(el as TableElement, row, count, where) ?? el
+        return insertRows(el as TableElement, row, count, where, unit) ?? el
       })
       // 向下插入时选区行号下移；向上插入时当前行下移
       setSelectedCells((prev) =>
@@ -1045,14 +1050,15 @@ export default function App() {
         return prev
       })
     },
-    [patchElement],
+    [patchElement, settings.width, settings.height],
   )
 
   const handleInsertTableCols = useCallback(
     (id: string, col: number, count: number, where: 'left' | 'right') => {
+      const unit = defaultFittedTableUnitSize(settings.width, settings.height)
       patchElement(id, (el) => {
         if (el.type !== 'table') return el
-        return insertCols(el as TableElement, col, count, where) ?? el
+        return insertCols(el as TableElement, col, count, where, unit) ?? el
       })
       setSelectedCells((prev) =>
         prev.map((p) => {
@@ -1076,7 +1082,7 @@ export default function App() {
         return prev
       })
     },
-    [patchElement],
+    [patchElement, settings.width, settings.height],
   )
 
   const handleDeleteTableRows = useCallback(
@@ -1624,8 +1630,12 @@ export default function App() {
           onSetRows={(n) => {
             if (!selected || selected.type !== 'table') return
             const next = Math.min(MAX_TABLE_ROWS, Math.max(1, n))
+            const unit = defaultFittedTableUnitSize(
+              settings.width,
+              settings.height,
+            )
             patchElement(selected.id, (el) =>
-              setTableRows(el as TableElement, next),
+              setTableRows(el as TableElement, next, unit),
             )
             setSelectedCells((prev) =>
               prev.filter((p) => p.row < next && p.col < selected.cols),
@@ -1637,8 +1647,12 @@ export default function App() {
           onSetCols={(n) => {
             if (!selected || selected.type !== 'table') return
             const next = Math.min(MAX_TABLE_COLS, Math.max(1, n))
+            const unit = defaultFittedTableUnitSize(
+              settings.width,
+              settings.height,
+            )
             patchElement(selected.id, (el) =>
-              setTableCols(el as TableElement, next),
+              setTableCols(el as TableElement, next, unit),
             )
             setSelectedCells((prev) =>
               prev.filter((p) => p.row < selected.rows && p.col < next),
