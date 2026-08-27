@@ -14,6 +14,7 @@ import { TableView } from './TableView'
 import { BarcodeView } from './BarcodeView'
 import { QrcodeView } from './QrcodeView'
 import { mmStyle, ptStyle } from '../utils/dpi'
+import { textEmphasisClassName, textEmphasisStyle } from '../utils/textStyle'
 
 const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 
@@ -114,19 +115,20 @@ function TextView({
   return (
     <div
       ref={ref}
-      className="text-el"
+      className={['text-el', textEmphasisClassName(el.fontWeight, el.fontStyle)]
+        .filter(Boolean)
+        .join(' ')}
       contentEditable
       suppressContentEditableWarning
       style={{
         fontFamily: el.fontFamily,
         fontSize: ptStyle(el.fontSize),
-        fontWeight: el.fontWeight,
-        fontStyle: el.fontStyle,
         textDecoration: el.textDecoration,
         color: el.color,
         textAlign: el.textAlign,
         letterSpacing: mmStyle(el.letterSpacing),
         lineHeight: el.lineHeight,
+        ...textEmphasisStyle(el.fontWeight, el.fontStyle),
       }}
       onFocus={() => {
         focusedRef.current = true

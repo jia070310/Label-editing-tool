@@ -32,6 +32,8 @@ export interface TableCell {
   covered: boolean
   backgroundColor: string
   color: string
+  /** 缺省时沿用表格 fontFamily（兼容旧模板） */
+  fontFamily?: string
   fontSize: number
   fontWeight: 'normal' | 'bold'
   fontStyle: 'normal' | 'italic'

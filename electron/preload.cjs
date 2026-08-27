@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('export-feedback-log', payload || {}),
   saveTextFile: (payload) => ipcRenderer.invoke('save-text-file', payload),
   openTextFile: (payload) => ipcRenderer.invoke('open-text-file', payload || {}),
+  getSystemFonts: () => ipcRenderer.invoke('get-system-fonts'),
 })

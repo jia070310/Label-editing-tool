@@ -1590,6 +1590,36 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
   outline: none;
+  font-synthesis: weight style;
+}
+
+/* contentEditable 内嵌标签继承外层加粗/斜体，避免点工具栏无效 */
+.text-el *,
+.table-el .cell-text * {
+  font-weight: inherit !important;
+  font-style: inherit !important;
+  color: inherit;
+}
+
+.text-emph-bold {
+  font-weight: 700 !important;
+  text-shadow:
+    0.45px 0 0 currentColor,
+    -0.45px 0 0 currentColor,
+    0 0.35px 0 currentColor;
+  -webkit-text-stroke: 0.012em currentColor;
+}
+
+.text-emph-italic {
+  font-style: oblique !important;
+  transform: skewX(-9deg);
+  transform-origin: center center;
+}
+
+/* 单元格文字斜体：inline-block 才能正确 skew，且不撑破单元格 */
+.table-el .cell-text.text-emph-italic {
+  display: inline-block;
+  max-width: 100%;
 }
 
 .rect-el {
@@ -1819,7 +1849,7 @@ body.table-moving * {
 
 .table-el-abs {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .table-el .table-cell {
@@ -1862,6 +1892,7 @@ body.table-moving * {
   display: block;
   white-space: pre-line;
   line-height: 1.25;
+  font-synthesis: weight style;
 }
 
 .table-el td:not(.editing) .cell-text,

@@ -7,6 +7,10 @@ import type {
   TableElement,
 } from '../types'
 import { canMerge, canSplit } from '../utils/table'
+import {
+  useSystemFonts,
+  withCurrentFontOption,
+} from '../utils/fonts'
 import { hasTextDecoration, toggleTextDecoration } from '../utils/textStyle'
 import { normalizeRotation, rotateElementBy90 } from '../utils/rotate'
 import { NumericDraftInput } from './NumericDraftInput'
@@ -52,6 +56,8 @@ export function RightPanel({
   translating,
   onSetTableFontSize,
 }: Props) {
+  const systemFonts = useSystemFonts()
+
   if (!selected) {
     return (
       <aside className="right-panel">
@@ -227,13 +233,21 @@ export function RightPanel({
             <div className="panel-row">
               <label>字体</label>
               <select
-                value={table.fontFamily}
-                onChange={(e) => onUpdate({ fontFamily: e.target.value })}
+                value={
+                  activeCell?.fontFamily ?? table.fontFamily
+                }
+                onChange={(e) =>
+                  onUpdateCellStyle({ fontFamily: e.target.value })
+                }
               >
-                <option value='SimHei, "Microsoft YaHei", sans-serif'>黑体</option>
-                <option value='"SimSun", serif'>宋体</option>
-                <option value='"Microsoft YaHei", sans-serif'>微软雅黑</option>
-                <option value="Arial, sans-serif">Arial</option>
+                {withCurrentFontOption(
+                  systemFonts,
+                  activeCell?.fontFamily ?? table.fontFamily,
+                ).map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="panel-row">

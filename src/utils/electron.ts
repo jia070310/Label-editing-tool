@@ -36,6 +36,7 @@ export interface ElectronPrintAPI {
     path?: string
     content?: string
   }>
+  getSystemFonts?: () => Promise<string[]>
 }
 
 export function isElectronApp(): boolean {

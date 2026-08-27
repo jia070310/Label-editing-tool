@@ -13,6 +13,107 @@ let mainWindow = null
 /** @type {BrowserWindow | null} */
 let splashWindow = null
 
+/**
+ * @param {string} command
+ * @param {string[]} args
+ * @returns {Promise<string>}
+ */
+function runCapture(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      windowsHide: true,
+      env: { ...process.env },
+    })
+    let out = ''
+    let err = ''
+    child.stdout.on('data', (d) => {
+      out += d.toString('utf8')
+    })
+    child.stderr.on('data', (d) => {
+      err += d.toString('utf8')
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) resolve(out)
+      else reject(new Error(err || `${command} exited ${code}`))
+    })
+  })
+}
+
+/** @returns {Promise<string[]>} */
+async function listWindowsFonts() {
+  // 避免依赖 $变量，降低嵌套转义后被吞掉的风险
+  const ps =
+    "Add-Type -AssemblyName System.Drawing; " +
+    "[System.Drawing.Text.InstalledFontCollection]::new().Families | " +
+    "ForEach-Object -MemberName Name | ConvertTo-Json -Compress"
+  const out = await runCapture('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-Command',
+    ps,
+  ])
+  const trimmed = out.trim()
+  if (!trimmed) return []
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) return parsed.map(String)
+    if (typeof parsed === 'string') return [parsed]
+    return []
+  } catch {
+    return trimmed
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+}
+
+/** @returns {Promise<string[]>} */
+async function listMacFonts() {
+  try {
+    const out = await runCapture('system_profiler', [
+      'SPFontsDataType',
+      '-json',
+    ])
+    const data = JSON.parse(out)
+    const fonts = data?.SPFontsDataType || []
+    const names = []
+    for (const f of fonts) {
+      const family = f?.typefaces?.[0]?.family || f?._name
+      if (family) names.push(String(family))
+    }
+    return names
+  } catch {
+    return []
+  }
+}
+
+/** @returns {Promise<string[]>} */
+async function listLinuxFonts() {
+  try {
+    const out = await runCapture('fc-list', [':', 'family'])
+    return out
+      .split(/\r?\n/)
+      .flatMap((line) =>
+        line
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      )
+  } catch {
+    return []
+  }
+}
+
+/** @returns {Promise<string[]>} */
+function listSystemFonts() {
+  if (process.platform === 'win32') return listWindowsFonts()
+  if (process.platform === 'darwin') return listMacFonts()
+  return listLinuxFonts()
+}
+
 function createSplash() {
   splashWindow = new BrowserWindow({
     width: 420,
@@ -351,12 +452,29 @@ try {
   $doc.add_PrintPage({
     param($sender, $e)
     try {
-      $bounds = $e.PageBounds
-      if ($bounds.Width -lt 1 -or $bounds.Height -lt 1) {
-        $bounds = New-Object System.Drawing.Rectangle(0, 0, $wHundredths, $hHundredths)
+      # 标签机硬边距：Graphics(0,0) 在可打印区左上角。先移回纸张原点再满幅绘制，
+      # 并略微内缩，避免顶/底边框落在不可打印区被裁掉。
+      $hardX = 0
+      $hardY = 0
+      try {
+        $hardX = [int][Math]::Round($e.PageSettings.HardMarginX)
+        $hardY = [int][Math]::Round($e.PageSettings.HardMarginY)
+      } catch {}
+      $pw = $e.PageSettings.PaperSize.Width
+      $ph = $e.PageSettings.PaperSize.Height
+      if ($pw -lt 1) { $pw = $wHundredths }
+      if ($ph -lt 1) { $ph = $hHundredths }
+      if ($hardX -ne 0 -or $hardY -ne 0) {
+        $e.Graphics.TranslateTransform(-$hardX, -$hardY)
       }
-      $renderState.Bounds = "$($bounds.X),$($bounds.Y) $($bounds.Width)x$($bounds.Height)"
+      # 约 0.5mm 内缩（单位：百分之一英寸）
+      $inset = 2
+      $dw = [Math]::Max(1, $pw - 2 * $inset)
+      $dh = [Math]::Max(1, $ph - 2 * $inset)
+      $bounds = New-Object System.Drawing.Rectangle($inset, $inset, $dw, $dh)
+      $renderState.Bounds = ('{0},{0} {1}x{2} hard={3},{4} paper={5}x{6}' -f $inset, $dw, $dh, $hardX, $hardY, $pw, $ph)
       $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+      $e.Graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
       $e.Graphics.DrawImage($img, $bounds)
       $e.HasMorePages = $false
       $renderState.Done = $true
@@ -807,6 +925,17 @@ app.whenReady().then(() => {
       /* ignore */
     }
     return { ok: true, path: filePath }
+  })
+
+  ipcMain.handle('get-system-fonts', async () => {
+    try {
+      return await listSystemFonts()
+    } catch (err) {
+      appendAppLog('get-system-fonts failed', {
+        message: err instanceof Error ? err.message : String(err),
+      })
+      return []
+    }
   })
 
   ipcMain.handle('open-text-file', async (_event, payload = {}) => {

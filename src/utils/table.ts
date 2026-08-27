@@ -19,6 +19,7 @@ export function createEmptyCell(overrides: Partial<TableCell> = {}): TableCell {
     covered: false,
     backgroundColor: 'transparent',
     color: '#111111',
+    fontFamily: 'SimHei, "Microsoft YaHei", sans-serif',
     fontSize: 9,
     fontWeight: 'normal',
     fontStyle: 'normal',

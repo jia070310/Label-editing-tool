@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import type { CellPos, TableCell, TableElement as TableEl } from '../types'
 import { MM_TO_PX, mmStyle, ptStyle } from '../utils/dpi'
+import { textEmphasisClassName, textEmphasisStyle } from '../utils/textStyle'
 import {
   alignMergedGeometry,
   ensureRowColHeights,
@@ -806,24 +807,26 @@ export const TableView = memo(function TableView({
               top: `${(box.y / totalH) * 100}%`,
               width: `${(box.w / totalW) * 100}%`,
               height: `${(box.h / totalH) * 100}%`,
-              borderStyle: 'solid',
-              borderColor: bc,
-              borderTopWidth: atTop ? bwCss : 0,
-              borderRightWidth: bwCss,
-              borderBottomWidth: bwCss,
-              borderLeftWidth: atLeft ? bwCss : 0,
+              // 四边都写明确 px，避免 html2canvas 丢 0 宽边或只认 borderWidth
+              borderTop: atTop ? `${bwCss} solid ${bc}` : `0px solid ${bc}`,
+              borderRight: `${bwCss} solid ${bc}`,
+              borderBottom: `${bwCss} solid ${bc}`,
+              borderLeft: atLeft ? `${bwCss} solid ${bc}` : `0px solid ${bc}`,
               backgroundColor:
                 cell.backgroundColor === 'transparent'
                   ? undefined
                   : cell.backgroundColor,
               color: cell.color,
+              fontFamily: cell.fontFamily ?? layout.fontFamily,
               fontSize: ptStyle(cell.fontSize),
-              fontWeight: cell.fontWeight,
-              fontStyle: cell.fontStyle ?? 'normal',
               textDecoration: cell.textDecoration ?? 'none',
               padding: 0,
               boxSizing: 'border-box',
               zIndex: editing ? 2 : 1,
+              // 单元格容器不加 skew，避免边框跟着斜
+              ...textEmphasisStyle(cell.fontWeight, cell.fontStyle, {
+                skew: false,
+              }),
             }
             const innerStyle: CSSProperties = {
               display: 'flex',
@@ -837,10 +840,11 @@ export const TableView = memo(function TableView({
             const textStyle: CSSProperties = {
               textAlign: cell.textAlign,
               width: '100%',
-              fontWeight: cell.fontWeight,
-              fontStyle: cell.fontStyle ?? 'normal',
               textDecoration: cell.textDecoration ?? 'none',
               color: cell.color,
+              ...textEmphasisStyle(cell.fontWeight, cell.fontStyle, {
+                skew: true,
+              }),
             }
             return (
               <div
@@ -869,7 +873,13 @@ export const TableView = memo(function TableView({
                       ref={editRef}
                       contentEditable
                       suppressContentEditableWarning
-                      className="cell-text cell-edit"
+                      className={[
+                        'cell-text',
+                        'cell-edit',
+                        textEmphasisClassName(cell.fontWeight, cell.fontStyle),
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
                       style={{
                         ...textStyle,
                         outline: 'none',
@@ -891,7 +901,15 @@ export const TableView = memo(function TableView({
                       }}
                     />
                   ) : (
-                    <span className="cell-text" style={textStyle}>
+                    <span
+                      className={[
+                        'cell-text',
+                        textEmphasisClassName(cell.fontWeight, cell.fontStyle),
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      style={textStyle}
+                    >
                       {cell.content}
                     </span>
                   )}

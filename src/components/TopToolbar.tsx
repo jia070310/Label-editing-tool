@@ -28,6 +28,10 @@ import {
 } from 'lucide-react'
 import type { LabelElement, LabelSettings, TableCell, TextElement } from '../types'
 import {
+  useSystemFonts,
+  withCurrentFontOption,
+} from '../utils/fonts'
+import {
   hasTextDecoration,
   toggleTextDecoration,
 } from '../utils/textStyle'
@@ -38,6 +42,7 @@ type CellStylePatch = Partial<
     TableCell,
     | 'textAlign'
     | 'verticalAlign'
+    | 'fontFamily'
     | 'fontWeight'
     | 'fontStyle'
     | 'textDecoration'
@@ -53,13 +58,6 @@ type TableFontState = {
   textDecoration: TableCell['textDecoration']
   color: string
 }
-
-const FONT_OPTIONS = [
-  { value: 'SimHei, "Microsoft YaHei", sans-serif', label: '黑体' },
-  { value: '"SimSun", serif', label: '宋体' },
-  { value: '"Microsoft YaHei", sans-serif', label: '微软雅黑' },
-  { value: 'Arial, sans-serif', label: 'Arial' },
-] as const
 
 interface Props {
   zoom: number
@@ -132,10 +130,12 @@ export function TopToolbar({
   tableFont,
   onSetTableFontSize,
 }: Props) {
+  const systemFonts = useSystemFonts()
   const text = selected?.type === 'text' ? (selected as TextElement) : null
   const canEditFont = !!text || !!tableFont
   const fontFamily =
     text?.fontFamily ?? tableFont?.fontFamily ?? 'SimHei, "Microsoft YaHei", sans-serif'
+  const fontOptions = withCurrentFontOption(systemFonts, fontFamily)
   const fontSize = text?.fontSize ?? tableFont?.fontSize ?? 11
   const fontWeight = text?.fontWeight ?? tableFont?.fontWeight ?? 'normal'
   const fontStyle = text?.fontStyle ?? tableFont?.fontStyle ?? 'normal'
@@ -145,7 +145,7 @@ export function TopToolbar({
 
   const setFontFamily = (family: string) => {
     if (text) onUpdateSelected({ fontFamily: family } as Partial<TextElement>)
-    else if (tableFont) onUpdateSelected({ fontFamily: family })
+    else if (tableFont) onUpdateTableCellStyle({ fontFamily: family })
   }
 
   const setFontSize = (size: number) => {
@@ -268,7 +268,7 @@ export function TopToolbar({
           disabled={!canEditFont}
           onChange={(e) => setFontFamily(e.target.value)}
         >
-          {FONT_OPTIONS.map((opt) => (
+          {fontOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

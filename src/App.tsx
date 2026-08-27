@@ -348,7 +348,7 @@ export default function App() {
         ? table.cells[selectedCells[0].row]?.[selectedCells[0].col]
         : table.cells[0]?.[0]
     return {
-      fontFamily: table.fontFamily,
+      fontFamily: sample?.fontFamily ?? table.fontFamily,
       fontSize: sample?.fontSize ?? 9,
       fontWeight: sample?.fontWeight ?? 'normal',
       fontStyle: sample?.fontStyle ?? 'normal',
@@ -455,7 +455,11 @@ export default function App() {
     (patch: Partial<TableCell>) => {
       if (!selected || selected.type !== 'table') return
       patchElement(selected.id, (el) => {
-        const table = el as TableElement
+        let table = el as TableElement
+        // 未选单元格时改字体：同步表格默认字体，供新建单元格继承
+        if (patch.fontFamily && selectedCells.length === 0) {
+          table = { ...table, fontFamily: patch.fontFamily }
+        }
         return selectedCells.length > 0
           ? updateCells(table, selectedCells, patch)
           : updateAllCells(table, patch)

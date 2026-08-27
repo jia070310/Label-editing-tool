@@ -54,23 +54,45 @@ function applyCaptureDpiStyles(root: HTMLElement, captureDpi: number) {
       ;(tr as HTMLElement).style.height = `${Math.round(parseFloat(hStyle) * (captureDpi / DESIGN_DPI))}px`
     }
   })
-  root.querySelectorAll('td').forEach((td) => {
-    const cell = td as HTMLElement
+  const scaleBorderSide = (val: string) => {
+    if (!val) return val
+    if (val.includes('mm')) {
+      return val.replace(/([\d.]+)mm/g, (_, n: string) => {
+        const mm = parseFloat(n)
+        if (!(mm > 0)) return '0px'
+        return `${Math.max(1, Math.round(mm * scale))}px`
+      })
+    }
+    if (val.includes('px')) {
+      return val.replace(/([\d.]+)px/g, (_, n: string) => {
+        const px = parseFloat(n)
+        if (!(px > 0)) return '0px'
+        return `${Math.max(1, Math.round(px * (captureDpi / DESIGN_DPI)))}px`
+      })
+    }
+    return val
+  }
+
+  root.querySelectorAll<HTMLElement>('td, .table-cell').forEach((cell) => {
     ;(['borderTop', 'borderLeft', 'borderRight', 'borderBottom'] as const).forEach(
       (prop) => {
         const val = cell.style[prop]
-        if (val?.includes('mm')) {
-          cell.style[prop] = val.replace(
-            /([\d.]+)mm/g,
-            (_, n: string) =>
-              `${Math.max(1, Math.round(parseFloat(n) * scale))}px`,
-          )
-        } else if (val?.includes('px')) {
-          cell.style[prop] = val.replace(
-            /([\d.]+)px/g,
-            (_, n: string) =>
-              `${Math.max(1, Math.round(parseFloat(n) * (captureDpi / DESIGN_DPI)))}px`,
-          )
+        if (val) cell.style[prop] = scaleBorderSide(val)
+      },
+    )
+    ;(['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'] as const).forEach(
+      (prop) => {
+        const val = cell.style[prop]
+        if (!val) return
+        if (val.endsWith('mm')) {
+          const mm = parseFloat(val)
+          cell.style[prop] = mm > 0 ? `${Math.max(1, Math.round(mm * scale))}px` : '0px'
+        } else if (val.endsWith('px')) {
+          const px = parseFloat(val)
+          cell.style[prop] =
+            px > 0
+              ? `${Math.max(1, Math.round(px * (captureDpi / DESIGN_DPI)))}px`
+              : '0px'
         }
       },
     )
@@ -84,12 +106,6 @@ function applyCaptureDpiStyles(root: HTMLElement, captureDpi: number) {
       const px = parseFloat(el.style.letterSpacing)
       if (Number.isFinite(px)) {
         el.style.letterSpacing = `${Math.round(px * (captureDpi / DESIGN_DPI) * 100) / 100}px`
-      }
-    }
-    if (el.style.borderWidth?.endsWith('px')) {
-      const px = parseFloat(el.style.borderWidth)
-      if (Number.isFinite(px)) {
-        el.style.borderWidth = `${Math.round(px * (captureDpi / DESIGN_DPI) * 100) / 100}px`
       }
     }
   })
@@ -156,6 +172,17 @@ export async function captureLabelImage(
     .join(';')
 
   applyCaptureDpiStyles(clone, dpi)
+
+  clone.querySelectorAll<HTMLElement>('.table-el-abs').forEach((el) => {
+    el.style.overflow = 'visible'
+    const parent = el.parentElement
+    if (parent) {
+      const w = parent.offsetWidth || parseFloat(parent.style.width) || 0
+      const h = parent.offsetHeight || parseFloat(parent.style.height) || 0
+      if (w > 0) el.style.width = `${Math.round(w)}px`
+      if (h > 0) el.style.height = `${Math.round(h)}px`
+    }
+  })
 
   host.appendChild(clone)
   document.body.appendChild(host)

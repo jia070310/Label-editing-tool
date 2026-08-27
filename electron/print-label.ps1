@@ -69,12 +69,29 @@ try {
   $doc.add_PrintPage({
     param($sender, $e)
     try {
-      $bounds = $e.PageBounds
-      if ($bounds.Width -lt 1 -or $bounds.Height -lt 1) {
-        $bounds = New-Object System.Drawing.Rectangle(0, 0, $wHundredths, $hHundredths)
+      # 标签机硬边距：Graphics(0,0) 在可打印区左上角。先移回纸张原点再满幅绘制，
+      # 并略微内缩，避免顶/底边框落在不可打印区被裁掉。
+      $hardX = 0
+      $hardY = 0
+      try {
+        $hardX = [int][Math]::Round($e.PageSettings.HardMarginX)
+        $hardY = [int][Math]::Round($e.PageSettings.HardMarginY)
+      } catch {}
+      $pw = $e.PageSettings.PaperSize.Width
+      $ph = $e.PageSettings.PaperSize.Height
+      if ($pw -lt 1) { $pw = $wHundredths }
+      if ($ph -lt 1) { $ph = $hHundredths }
+      if ($hardX -ne 0 -or $hardY -ne 0) {
+        $e.Graphics.TranslateTransform(-$hardX, -$hardY)
       }
-      $renderState.Bounds = "$($bounds.X),$($bounds.Y) $($bounds.Width)x$($bounds.Height)"
+      # 约 0.5mm 内缩（单位：百分之一英寸）
+      $inset = 2
+      $dw = [Math]::Max(1, $pw - 2 * $inset)
+      $dh = [Math]::Max(1, $ph - 2 * $inset)
+      $bounds = New-Object System.Drawing.Rectangle($inset, $inset, $dw, $dh)
+      $renderState.Bounds = ('{0},{0} {1}x{2} hard={3},{4} paper={5}x{6}' -f $inset, $dw, $dh, $hardX, $hardY, $pw, $ph)
       $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+      $e.Graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
       $e.Graphics.DrawImage($img, $bounds)
       $e.HasMorePages = $false
       $renderState.Done = $true
