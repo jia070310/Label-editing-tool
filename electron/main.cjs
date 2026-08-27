@@ -928,6 +928,24 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('get-app-version', async () => app.getVersion())
+
+  ipcMain.handle('open-external', async (_event, url) => {
+    const target = String(url || '').trim()
+    if (!/^https?:\/\//i.test(target)) {
+      return { ok: false, error: 'invalid url' }
+    }
+    try {
+      await shell.openExternal(target)
+      return { ok: true }
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
+  })
+
   ipcMain.handle('open-text-file', async (_event, payload = {}) => {
     const { canceled, filePaths } = await dialog.showOpenDialog(
       mainWindow || undefined,

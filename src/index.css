@@ -1603,16 +1603,11 @@ button {
 
 .text-emph-bold {
   font-weight: 700 !important;
-  text-shadow:
-    0.45px 0 0 currentColor,
-    -0.45px 0 0 currentColor,
-    0 0.35px 0 currentColor;
-  -webkit-text-stroke: 0.012em currentColor;
 }
 
 .text-emph-italic {
   font-style: oblique !important;
-  transform: skewX(-9deg);
+  transform: skewX(-8deg);
   transform-origin: center center;
 }
 
@@ -2432,6 +2427,101 @@ body.table-moving * {
 
 .feedback-dialog {
   width: min(480px, calc(100vw - 32px));
+}
+
+.about-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.about-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+}
+
+.about-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  margin-bottom: 8px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(145deg, #ff9a4a, #ff7a1a 55%, #ef6c0c);
+  box-shadow: 0 8px 20px rgba(255, 122, 26, 0.28);
+}
+
+.about-name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.about-version {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.about-desc {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-width: 280px;
+}
+
+.about-info {
+  margin: 14px 0 0;
+  width: 100%;
+  max-width: 360px;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.about-info > div {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.about-info dt {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.about-info dd {
+  margin: 0;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.about-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.about-link:hover {
+  color: #ef6c0c;
+}
+
+.about-meta {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.75;
 }
 
 .feedback-hint {

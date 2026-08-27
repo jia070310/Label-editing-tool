@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Download,
   AlignCenter,
@@ -21,6 +22,7 @@ import {
   Underline,
   Undo2,
   Strikethrough,
+  CircleHelp,
   ClipboardPaste,
   SquareMousePointer,
   Unlock,
@@ -36,6 +38,7 @@ import {
   toggleTextDecoration,
 } from '../utils/textStyle'
 import { VariableInsertButton } from './VariableInsertButton'
+import { AboutDialog } from './AboutDialog'
 
 type CellStylePatch = Partial<
   Pick<
@@ -130,6 +133,7 @@ export function TopToolbar({
   tableFont,
   onSetTableFontSize,
 }: Props) {
+  const [aboutOpen, setAboutOpen] = useState(false)
   const systemFonts = useSystemFonts()
   const text = selected?.type === 'text' ? (selected as TextElement) : null
   const canEditFont = !!text || !!tableFont
@@ -259,8 +263,18 @@ export function TopToolbar({
             <Printer size={16} />
             <span className="label">打印</span>
           </button>
+          <button
+            className="tool-btn"
+            title="关于"
+            onClick={() => setAboutOpen(true)}
+          >
+            <CircleHelp size={16} />
+            <span className="label">关于</span>
+          </button>
         </div>
       </div>
+
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
       <div className="format-bar">
         <select
