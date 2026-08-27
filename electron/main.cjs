@@ -400,7 +400,7 @@ try {
       Write-PrintLog ("list serial ports failed: {0}" -f $_.Exception.Message)
     }
     if (-not $comOk) {
-      throw ("打印机端口 {0} 不可用（设备未连接或端口已变更）。请检查 POSLABEL 电源/数据线，并在 Windows 打印机属性中确认端口。" -f $portName)
+      throw ("PRINTER_PORT_UNAVAILABLE: {0}" -f $portName)
     }
   }
 
@@ -411,17 +411,17 @@ try {
     } | Sort-Object Id -Descending)
     if ($jobs.Count -gt 0) {
       $job = $jobs[0]
-      Write-PrintLog ("job Id={0} Status={1} PagesPrinted={2} Size={3}" -f $job.Id, $job.JobStatus, $job.PagesPrinted, $job.Size)
+      Write-PrintLog ('job Id={0} Status={1} PagesPrinted={2} Size={3}' -f $job.Id, $job.JobStatus, $job.PagesPrinted, $job.Size)
       $st = [string]$job.JobStatus
-      if ($st -match 'Error|失败') {
-        throw ("打印机队列报错（作业 {0}：{1}）。多为设备离线、缺纸、端口不通或纸张尺寸与实物不符，不是编辑器渲染失败。" -f $job.Id, $st)
+      if ($st -match 'Error|Failed|失败') {
+        throw ('PRINTER_QUEUE_ERROR: job={0}; status={1}' -f $job.Id, $st)
       }
     } else {
-      Write-PrintLog "no retained LabelPrint job in queue (likely completed or auto-deleted)"
+      Write-PrintLog 'no retained LabelPrint job in queue (likely completed or auto-deleted)'
     }
   } catch {
-    if ($_.Exception.Message -match '打印机队列报错|端口') { throw }
-    Write-PrintLog ("Get-PrintJob check skipped: {0}" -f $_.Exception.Message)
+    if ($_.Exception.Message -match 'PRINTER_QUEUE_ERROR|PRINTER_PORT_UNAVAILABLE') { throw }
+    Write-PrintLog ('Get-PrintJob check skipped: {0}' -f $_.Exception.Message)
   }
 
   Write-Output "OK"
@@ -447,7 +447,18 @@ function normalizePrintError(raw) {
   }
 
   const marked = text.match(/PRINT_ERROR:\s*(.+)/i)
-  if (marked?.[1]) return marked[1].trim().slice(0, 240)
+  if (marked?.[1]) {
+    const msg = marked[1].trim()
+    if (/^PRINTER_PORT_UNAVAILABLE:/i.test(msg)) {
+      const port = msg.replace(/^PRINTER_PORT_UNAVAILABLE:\s*/i, '')
+      return `打印机端口 ${port} 不可用（设备未连接或端口已变更）。请检查 POSLABEL 电源/数据线，并在 Windows 打印机属性中确认端口。`
+    }
+    if (/^PRINTER_QUEUE_ERROR:/i.test(msg)) {
+      const detail = msg.replace(/^PRINTER_QUEUE_ERROR:\s*/i, '')
+      return `打印机队列报错（${detail}）。多为设备离线、缺纸、端口不通或纸张尺寸与实物不符。`
+    }
+    return msg.slice(0, 240)
+  }
 
   const lines = text
     .split(/\r?\n/)
@@ -471,12 +482,17 @@ function normalizePrintError(raw) {
   return fallback.replace(/^.*?:\s*/, '').slice(0, 240)
 }
 
+function writeUtf8BomFile(filePath, content) {
+  // Windows PowerShell 5.1 无 BOM 时按系统 ANSI 读脚本，中文会截断字符串导致解析失败
+  fs.writeFileSync(filePath, `\uFEFF${content}`, 'utf8')
+}
+
 function runPowershellPrint(imagePath, printerName, widthMm, heightMm) {
   const tmpDir = getPrintWorkDir()
   const logPath = getPrintLogPath()
   // 写到纯 ASCII 临时路径，避免中文项目路径导致 PS 解析失败
   const scriptPath = path.join(tmpDir, 'print-label-run.ps1')
-  fs.writeFileSync(scriptPath, PRINT_PS1, 'utf8')
+  writeUtf8BomFile(scriptPath, PRINT_PS1)
 
   appendPrintLog('spawn powershell', {
     scriptPath,

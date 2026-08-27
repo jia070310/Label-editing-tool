@@ -1,7 +1,7 @@
 {
   "name": "lemon-label-tool",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "柠檬标签工具",
   "author": "Lemon Label",
   "type": "module",
