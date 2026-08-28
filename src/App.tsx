@@ -41,6 +41,7 @@ import {
   resizeTableBox,
   resizeColInRows,
   resizeRowInCols,
+  resizeRowFromTopEdge,
   setColWidth,
   setRowHeight,
   setTableCols,
@@ -982,6 +983,30 @@ export default function App() {
     [patchElement],
   )
 
+  const handleTableResizeTopEdgeInCols = useCallback(
+    (
+      id: string,
+      topHeight: number,
+      colStart: number,
+      colEndExclusive: number,
+    ) => {
+      patchElement(
+        id,
+        (el) => {
+          const { table, deltaY } = resizeRowFromTopEdge(
+            el as TableElement,
+            topHeight,
+            colStart,
+            colEndExclusive,
+          )
+          return deltaY !== 0 ? { ...table, y: table.y + deltaY } : table
+        },
+        false,
+      )
+    },
+    [patchElement],
+  )
+
   const handleTableMoveColBoundaryInRows = useCallback(
     (
       id: string,
@@ -1748,6 +1773,7 @@ export default function App() {
                       onTableRowHeight={handleTableRowHeight}
                       onTableResizeColInRows={handleTableResizeColInRows}
                       onTableResizeRowInCols={handleTableResizeRowInCols}
+                      onTableResizeTopEdgeInCols={handleTableResizeTopEdgeInCols}
                       onTableMoveColBoundaryInRows={
                         handleTableMoveColBoundaryInRows
                       }

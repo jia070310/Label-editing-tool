@@ -1712,6 +1712,16 @@ button {
   pointer-events: none;
   z-index: 4;
   overflow: visible;
+  --ui-grid-line: calc(1px / var(--ui-zoom));
+}
+
+.element-handles-table {
+  /* 表格外框已有单元格边线，不再叠橙色选框，避免双线 */
+  pointer-events: none;
+}
+
+.element-handles-table .handle {
+  pointer-events: auto;
 }
 
 .table-wrap.grid-cursor-col,
@@ -1743,10 +1753,10 @@ button {
   top: 0;
   bottom: 0;
   left: 50%;
-  width: var(--ui-stroke);
-  margin-left: calc(-0.5 * var(--ui-stroke));
+  width: var(--ui-grid-line);
+  margin-left: calc(-0.5 * var(--ui-grid-line));
   background: transparent;
-  transition: background 0.12s;
+  transition: background 0.1s;
 }
 
 .table-row-resizer {
@@ -1763,10 +1773,10 @@ button {
   left: 0;
   right: 0;
   top: 50%;
-  height: var(--ui-stroke);
-  margin-top: calc(-0.5 * var(--ui-stroke));
+  height: var(--ui-grid-line);
+  margin-top: calc(-0.5 * var(--ui-grid-line));
   background: transparent;
-  transition: background 0.12s;
+  transition: background 0.1s;
 }
 
 .table-grid-cross {
@@ -1787,29 +1797,31 @@ button {
   content: '';
   position: absolute;
   background: var(--accent);
-  border-radius: calc(var(--ui-stroke) * 0.5);
-  opacity: 0.45;
-  transition: opacity 0.12s;
+  border-radius: calc(var(--ui-grid-line) * 0.5);
+  opacity: 0;
+  transition: opacity 0.1s;
 }
 
 .table-grid-cross::before {
   width: var(--ui-cross-arm);
-  height: var(--ui-stroke);
+  height: var(--ui-grid-line);
 }
 
 .table-grid-cross::after {
-  width: var(--ui-stroke);
+  width: var(--ui-grid-line);
   height: var(--ui-cross-arm);
 }
 
 .table-col-resizer.is-hot::after,
 .table-col-resizer:active::after {
   background: var(--accent);
+  z-index: 1;
 }
 
 .table-row-resizer.is-hot::after,
 .table-row-resizer:active::after {
   background: var(--accent);
+  z-index: 1;
 }
 
 .table-grid-cross.is-hot::before,

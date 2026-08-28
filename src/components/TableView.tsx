@@ -67,6 +67,7 @@ type GridDrag =
       mode: 'resize'
       colStart: number
       colEndExclusive: number
+      edge?: 'top' | 'bottom'
     }
   | {
       kind: 'row'
@@ -77,6 +78,7 @@ type GridDrag =
       colStart: number
       colEndExclusive: number
       expandMerge: boolean
+      edge?: 'top' | 'bottom'
     }
 
 type GridHit =
@@ -94,10 +96,11 @@ type GridHit =
       segKey: string
       spanStart: number
       spanEnd: number
+      edge?: 'top' | 'bottom'
     }
 
 function makeSegKey(seg: GridLineSegment) {
-  return `${seg.index}:${seg.spanStart}-${seg.spanEnd}:${seg.posPct.toFixed(2)}`
+  return `${seg.edge ?? 'mid'}:${seg.index}:${seg.spanStart}-${seg.spanEnd}:${seg.posPct.toFixed(2)}`
 }
 
 /** 仅命中实际可见表格线（合并格内部的假线不命中） */
@@ -140,7 +143,9 @@ function findGridHit(
     const x0 = (seg.startPct / 100) * rect.width
     const x1 = (seg.endPct / 100) * rect.width
     const d = Math.abs(y - py)
-    if (d <= hitSlop && x >= x0 - hitSlop && x <= x1 + hitSlop) {
+    const slop =
+      seg.edge === 'top' || seg.edge === 'bottom' ? hitSlop * 1.75 : hitSlop
+    if (d <= slop && x >= x0 - hitSlop && x <= x1 + hitSlop) {
       nearRow.push({ seg, d })
     }
   }
@@ -170,15 +175,26 @@ function findGridHit(
     }
   }
   if (bestCross && !preferLineOnly) {
-    return {
-      kind: 'cross',
-      colIndex: bestCross.colIndex,
-      rowIndex: bestCross.rowIndex,
+    const lineDist = Math.min(
+      nearCol[0]?.d ?? Infinity,
+      nearRow[0]?.d ?? Infinity,
+    )
+    if (lineDist >= bestCross.dist) {
+      return {
+        kind: 'cross',
+        colIndex: bestCross.colIndex,
+        rowIndex: bestCross.rowIndex,
+      }
     }
   }
 
   nearCol.sort((a, b) => a.d - b.d)
-  nearRow.sort((a, b) => a.d - b.d)
+  nearRow.sort((a, b) => {
+    if (a.d !== b.d) return a.d - b.d
+    const aEdge = a.seg.edge ? 0 : 1
+    const bEdge = b.seg.edge ? 0 : 1
+    return aEdge - bEdge
+  })
   if (nearCol[0] && nearRow[0]) {
     if (nearCol[0].d <= nearRow[0].d) {
       return {
@@ -195,6 +211,7 @@ function findGridHit(
       segKey: makeSegKey(nearRow[0].seg),
       spanStart: nearRow[0].seg.spanStart,
       spanEnd: nearRow[0].seg.spanEnd,
+      edge: nearRow[0].seg.edge,
     }
   }
   if (nearCol[0]) {
@@ -213,6 +230,7 @@ function findGridHit(
       segKey: makeSegKey(nearRow[0].seg),
       spanStart: nearRow[0].seg.spanStart,
       spanEnd: nearRow[0].seg.spanEnd,
+      edge: nearRow[0].seg.edge,
     }
   }
   return null
@@ -240,6 +258,11 @@ interface Props {
   ) => void
   onGridResizeRowInCols: (
     topIndex: number,
+    topHeight: number,
+    colStart: number,
+    colEndExclusive: number,
+  ) => void
+  onGridResizeTopEdgeInCols: (
     topHeight: number,
     colStart: number,
     colEndExclusive: number,
@@ -283,6 +306,7 @@ export const TableView = memo(function TableView({
   onGridResizeRow,
   onGridResizeColInRows,
   onGridResizeRowInCols,
+  onGridResizeTopEdgeInCols,
   onGridMoveColBoundaryInRows,
   onGridMoveRowBoundaryInCols,
   onTableMoveStart,
@@ -378,6 +402,10 @@ export const TableView = memo(function TableView({
     () => (showGridResizers ? buildRowSegmentsLayout(layout) : []),
     [showGridResizers, layout],
   )
+  const rowSegmentsVisual = useMemo(
+    () => rowSegments.filter((seg) => !seg.edge),
+    [rowSegments],
+  )
 
   const gridCrosses = useMemo(() => {
     const crosses: {
@@ -387,7 +415,7 @@ export const TableView = memo(function TableView({
       topPct: number
     }[] = []
     for (const c of colSegments) {
-      for (const r of rowSegments) {
+      for (const r of rowSegmentsVisual) {
         if (r.posPct < c.startPct - 0.01 || r.posPct > c.endPct + 0.01) continue
         if (c.posPct < r.startPct - 0.01 || c.posPct > r.endPct + 0.01) continue
         crosses.push({
@@ -400,12 +428,14 @@ export const TableView = memo(function TableView({
     }
     const seen = new Set<string>()
     return crosses.filter((x) => {
+      if (x.topPct <= 0.01 || x.topPct >= 99.99) return false
+      if (x.leftPct <= 0.01 || x.leftPct >= 99.99) return false
       const k = `${x.colIndex}-${x.rowIndex}-${x.leftPct.toFixed(2)}-${x.topPct.toFixed(2)}`
       if (seen.has(k)) return false
       seen.add(k)
       return true
     })
-  }, [colSegments, rowSegments])
+  }, [colSegments, rowSegmentsVisual])
 
   useEffect(() => {
     if (!showGridResizers) setHoverHit(null)
@@ -463,11 +493,21 @@ export const TableView = memo(function TableView({
           }
         } else {
           const dy = (clientY - current.startY) / scale
-          const nextH = Math.max(
-            2,
-            Math.round((current.startHeight + dy) * 100) / 100,
-          )
-          if (current.mode === 'move') {
+          if (current.edge === 'top') {
+            const nextH = Math.max(
+              2,
+              Math.round((current.startHeight - dy) * 100) / 100,
+            )
+            onGridResizeTopEdgeInCols(
+              nextH,
+              current.colStart,
+              current.colEndExclusive,
+            )
+          } else if (current.mode === 'move') {
+            const nextH = Math.max(
+              2,
+              Math.round((current.startHeight + dy) * 100) / 100,
+            )
             onGridMoveRowBoundaryInCols(
               current.index,
               nextH,
@@ -476,6 +516,10 @@ export const TableView = memo(function TableView({
               current.expandMerge,
             )
           } else {
+            const nextH = Math.max(
+              2,
+              Math.round((current.startHeight + dy) * 100) / 100,
+            )
             onGridResizeRowInCols(
               current.index,
               nextH,
@@ -518,6 +562,7 @@ export const TableView = memo(function TableView({
     onGridResizeRow,
     onGridResizeColInRows,
     onGridResizeRowInCols,
+    onGridResizeTopEdgeInCols,
     onGridMoveColBoundaryInRows,
     onGridMoveRowBoundaryInCols,
   ])
@@ -592,9 +637,20 @@ export const TableView = memo(function TableView({
     index: number,
     spanStart: number,
     spanEnd: number,
+    edge?: 'top' | 'bottom',
   ) => {
     e.preventDefault()
     e.stopPropagation()
+    const rowIndex =
+      edge === 'bottom'
+        ? layout.rows - 1
+        : edge === 'top'
+          ? 0
+          : index
+    const boundaryIndex =
+      edge === 'bottom'
+        ? Math.max(0, layout.rows - 2)
+        : index
     // 锚点取光标所在列，而不是高亮线段的起点
     let anchorCol = Math.max(0, Math.min(layout.cols - 1, Math.floor(spanStart)))
     if (wrapRef.current) {
@@ -603,44 +659,59 @@ export const TableView = memo(function TableView({
         const xMm = ((e.clientX - rect.left) / rect.width) * totalW
         anchorCol = findColAtRowBoundaryX(
           layout,
-          index,
+          boundaryIndex,
           spanStart,
           spanEnd,
           xMm,
         )
       }
     }
+    let isMove = e.altKey
+    if (edge === 'top') isMove = false
+    // 末行上方的内线：默认在上下两行之间分配高度（否则只改上一行、末行不动）
+    if (
+      !isMove &&
+      !edge &&
+      layout.rows > 1 &&
+      index === layout.rows - 2
+    ) {
+      isMove = true
+    }
     const startHeight =
-      layout.rowColHeights?.[index]?.[anchorCol] ??
-      layout.rowHeights[index] ??
+      layout.rowColHeights?.[
+        isMove ? boundaryIndex : rowIndex
+      ]?.[anchorCol] ??
+      layout.rowHeights[isMove ? boundaryIndex : rowIndex] ??
       8
-    const isMove = e.altKey
     const singleSegment = e.altKey && qKeyRef.current
     const range = singleSegment
       ? { colStart: anchorCol, colEnd: anchorCol + 1 }
-      : findAlignedRowColSpan(layout, index, anchorCol)
+      : findAlignedRowColSpan(layout, boundaryIndex, anchorCol)
+    const dragIndex = isMove ? boundaryIndex : rowIndex
     if (isMove) {
       beginGridDrag('table-grid-resizing-row', true)
       gridDragRef.current = {
         kind: 'row',
-        index,
+        index: dragIndex,
         startY: e.clientY,
         startHeight,
         mode: 'move',
         colStart: range.colStart,
         colEndExclusive: range.colEnd,
         expandMerge: !singleSegment,
+        edge,
       }
     } else {
       beginGridDrag('table-grid-resizing-row', false)
       gridDragRef.current = {
         kind: 'row',
-        index,
+        index: dragIndex,
         startY: e.clientY,
         startHeight,
         mode: 'resize',
         colStart: range.colStart,
         colEndExclusive: range.colEnd,
+        edge,
       }
     }
   }
@@ -657,6 +728,7 @@ export const TableView = memo(function TableView({
     preferLineOnly = false,
   ) => {
     if (!wrapRef.current || !showGridResizers) return null
+    const slop = Math.max(10, 10 / Math.max(zoom, 0.25))
     return findGridHit(
       wrapRef.current,
       clientX,
@@ -664,6 +736,7 @@ export const TableView = memo(function TableView({
       colSegments,
       rowSegments,
       preferLineOnly,
+      slop,
     )
   }
 
@@ -707,7 +780,7 @@ export const TableView = memo(function TableView({
     if (hit.kind === 'cross') startCrossMove(e)
     else if (hit.kind === 'col')
       startColResize(e, hit.index, hit.spanStart, hit.spanEnd)
-    else startRowResize(e, hit.index, hit.spanStart, hit.spanEnd)
+    else startRowResize(e, hit.index, hit.spanStart, hit.spanEnd, hit.edge)
   }
 
   const handleCellMouseDown = (
@@ -943,7 +1016,7 @@ export const TableView = memo(function TableView({
               />
             )
           })}
-          {rowSegments.map((seg) => {
+          {rowSegmentsVisual.map((seg) => {
             const key = makeSegKey(seg)
             const hot =
               hoverHit?.kind === 'row' &&

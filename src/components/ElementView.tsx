@@ -21,6 +21,7 @@ const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 function visibleResizeHandles(type: LabelElement['type']): ResizeHandle[] {
   if (type === 'line') return []
   if (type === 'rect') return HANDLES.filter((h) => h !== 'w' && h !== 'e')
+  if (type === 'table') return HANDLES.filter((h) => h !== 'n' && h !== 's')
   return HANDLES
 }
 
@@ -58,6 +59,12 @@ interface Props {
   onTableResizeRowInCols: (
     id: string,
     topIndex: number,
+    topHeight: number,
+    colStart: number,
+    colEndExclusive: number,
+  ) => void
+  onTableResizeTopEdgeInCols: (
+    id: string,
     topHeight: number,
     colStart: number,
     colEndExclusive: number,
@@ -256,6 +263,14 @@ export const ElementView = memo(function ElementView(props: Props) {
               colEndExclusive,
             )
           }
+          onGridResizeTopEdgeInCols={(topHeight, colStart, colEndExclusive) =>
+            props.onTableResizeTopEdgeInCols(
+              element.id,
+              topHeight,
+              colStart,
+              colEndExclusive,
+            )
+          }
           onGridMoveColBoundaryInRows={(
             leftIndex,
             leftWidth,
@@ -311,8 +326,15 @@ export const ElementView = memo(function ElementView(props: Props) {
       )}
 
       {selected && !element.locked && (
-        <div className="element-handles">
-          <div className="element-frame" />
+        <div
+          className={[
+            'element-handles',
+            element.type === 'table' ? 'element-handles-table' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {element.type !== 'table' && <div className="element-frame" />}
           {visibleResizeHandles(element.type).map((h) => (
             <div
               key={h}

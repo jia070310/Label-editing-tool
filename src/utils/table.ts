@@ -607,6 +607,24 @@ export function buildRowSegmentsLayout(el: TableElement): GridLineSegment[] {
       })
     }
   }
+  segments.push({
+    index: 0,
+    edge: 'top',
+    posPct: 0,
+    startPct: 0,
+    endPct: 100,
+    spanStart: 0,
+    spanEnd: base.cols,
+  })
+  segments.push({
+    index: base.rows - 1,
+    edge: 'bottom',
+    posPct: 100,
+    startPct: 0,
+    endPct: 100,
+    spanStart: 0,
+    spanEnd: base.cols,
+  })
   return segments
 }
 
@@ -1006,6 +1024,37 @@ export function resizeRowInCols(
     height: newH,
     rowColHeights,
   })
+}
+
+/** 从顶边拖动：首行高度变化、总高反向补偿，顶边跟随鼠标（底边保持不动） */
+export function resizeRowFromTopEdge(
+  el: TableElement,
+  newRow0Height: number,
+  colStart: number,
+  colEnd: number,
+): { table: TableElement; deltaY: number } {
+  const base = ensureRowColHeights(ensureRowColWidths(el))
+  const h = Math.max(2, newRow0Height)
+  let c0 = Math.max(0, Math.min(base.cols, Math.floor(colStart)))
+  let c1 = Math.max(c0, Math.min(base.cols, Math.floor(colEnd)))
+  ;[c0, c1] = expandColRangeForRowBoundary(base, 0, c0, c1)
+  const anchor = Math.max(c0, Math.min(c1 - 1, c0))
+  const oldTop =
+    base.rowColHeights![0]?.[anchor] ?? base.rowHeights[0] ?? 8
+  const delta = h - oldTop
+  const oldH = base.height > 0 ? base.height : tableContentHeight(base)
+  const newH = Math.max(base.rows * 2, oldH + delta)
+  let rowColHeights = base.rowColHeights!.map((row) => [...row])
+  for (let c = c0; c < c1; c++) {
+    rowColHeights[0][c] = h
+  }
+  rowColHeights = fitColHeightsToTarget(rowColHeights, base.cols, newH)
+  const table = syncTableSize({
+    ...base,
+    height: newH,
+    rowColHeights,
+  })
+  return { table, deltaY: -delta }
 }
 
 /** 移动列分隔线：所有行（legacy） */
@@ -1820,6 +1869,8 @@ export function isRowBoundaryVisible(
 
 export type GridLineSegment = {
   index: number
+  /** 外边框：顶/底行可单独调整高度 */
+  edge?: 'top' | 'bottom'
   /** 主轴位置（列线的 left% / 行线的 top%），0-100 */
   posPct: number
   /** 分段起点百分比 */

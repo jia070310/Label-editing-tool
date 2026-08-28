@@ -37,6 +37,12 @@ const noopResizeRowInCols = (
   _colStart: number,
   _colEndExclusive: number,
 ) => {}
+const noopResizeTopEdgeInCols = (
+  _id: string,
+  _topHeight: number,
+  _colStart: number,
+  _colEndExclusive: number,
+) => {}
 const noopMoveColBoundaryInRows = (
   _id: string,
   _leftIndex: number,
@@ -120,6 +126,7 @@ export function LabelSheetStatic({ elements, settings, onMounted }: Props) {
           onTableRowHeight={noopGrid}
           onTableResizeColInRows={noopResizeColInRows}
           onTableResizeRowInCols={noopResizeRowInCols}
+          onTableResizeTopEdgeInCols={noopResizeTopEdgeInCols}
           onTableMoveColBoundaryInRows={noopMoveColBoundaryInRows}
           onTableMoveRowBoundaryInCols={noopMoveRowBoundaryInCols}
           onTableMoveStart={noopMove}
