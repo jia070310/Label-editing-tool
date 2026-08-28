@@ -13,6 +13,8 @@ export interface BaseElement {
 
 export interface TextElement extends BaseElement {
   type: 'text'
+  /** 由「日期」工具创建时为 date，插入变量时整段替换 */
+  textRole?: 'plain' | 'date'
   content: string
   fontFamily: string
   fontSize: number

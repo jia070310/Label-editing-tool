@@ -33,6 +33,8 @@ import {
   insertCols,
   deleteRows,
   deleteCols,
+  deleteRowsAtIndices,
+  deleteColsAtIndices,
   MAX_TABLE_COLS,
   MAX_TABLE_ROWS,
   mergeCells,
@@ -75,7 +77,7 @@ import {
   cellHasTranslation,
   translateZhToEn,
 } from './utils/translate'
-import { variableToken } from './utils/variables'
+import { variableToken, shouldReplaceWithVariableOnly } from './utils/variables'
 import {
   canRotateElement,
   normalizeRotation,
@@ -174,6 +176,7 @@ function createElement(
       break
     case 'date': {
       const dateEl = createTextElement(2, 2)
+      dateEl.textRole = 'date'
       dateEl.content = new Date().toLocaleDateString('zh-CN')
       dateEl.width = 28
       el = dateEl
@@ -1182,6 +1185,80 @@ export default function App() {
     [patchElement],
   )
 
+  const adjustCellsAfterRowDelete = (
+    cells: CellPos[],
+    deletedRows: number[],
+  ): CellPos[] => {
+    const deleted = new Set(deletedRows)
+    const sorted = [...deleted].sort((a, b) => a - b)
+    return cells
+      .filter((c) => !deleted.has(c.row))
+      .map((c) => ({
+        ...c,
+        row: c.row - sorted.filter((r) => r < c.row).length,
+      }))
+  }
+
+  const adjustCellsAfterColDelete = (
+    cells: CellPos[],
+    deletedCols: number[],
+  ): CellPos[] => {
+    const deleted = new Set(deletedCols)
+    const sorted = [...deleted].sort((a, b) => a - b)
+    return cells
+      .filter((c) => !deleted.has(c.col))
+      .map((c) => ({
+        ...c,
+        col: c.col - sorted.filter((col) => col < c.col).length,
+      }))
+  }
+
+  const handleDeleteSelectedTableRows = useCallback(() => {
+    if (!selected || selected.type !== 'table' || selectedCells.length === 0)
+      return
+    const table = selected as TableElement
+    const rows = [...new Set(selectedCells.map((c) => c.row))]
+    if (rows.length === 0 || rows.length >= table.rows) return
+    patchElement(selected.id, (el) => {
+      if (el.type !== 'table') return el
+      return deleteRowsAtIndices(el as TableElement, rows) ?? el
+    })
+    const next = adjustCellsAfterRowDelete(selectedCells, rows)
+    setSelectedCells(
+      next.length > 0
+        ? next
+        : [{ row: 0, col: selectedCells[0]?.col ?? 0 }],
+    )
+    setEditingCell((prev) => {
+      if (!prev || rows.includes(prev.row)) return null
+      const [nextCell] = adjustCellsAfterRowDelete([prev], rows)
+      return nextCell ?? null
+    })
+  }, [selected, selectedCells, patchElement])
+
+  const handleDeleteSelectedTableCols = useCallback(() => {
+    if (!selected || selected.type !== 'table' || selectedCells.length === 0)
+      return
+    const table = selected as TableElement
+    const cols = [...new Set(selectedCells.map((c) => c.col))]
+    if (cols.length === 0 || cols.length >= table.cols) return
+    patchElement(selected.id, (el) => {
+      if (el.type !== 'table') return el
+      return deleteColsAtIndices(el as TableElement, cols) ?? el
+    })
+    const next = adjustCellsAfterColDelete(selectedCells, cols)
+    setSelectedCells(
+      next.length > 0
+        ? next
+        : [{ row: selectedCells[0]?.row ?? 0, col: 0 }],
+    )
+    setEditingCell((prev) => {
+      if (!prev || cols.includes(prev.col)) return null
+      const [nextCell] = adjustCellsAfterColDelete([prev], cols)
+      return nextCell ?? null
+    })
+  }, [selected, selectedCells, patchElement])
+
   const handleMerge = () => {
     if (!selected || selected.type !== 'table') return
     const next = mergeCells(selected, selectedCells)
@@ -1304,9 +1381,15 @@ export default function App() {
     (name: string) => {
       const token = variableToken(name)
       const active = document.activeElement as HTMLElement | null
+      const replaceOnly = shouldReplaceWithVariableOnly(selected)
 
-      // 任意 contentEditable（文本框或单元格）：插到光标处
+      // 任意 contentEditable（文本框或单元格）
       if (active?.isContentEditable) {
+        if (replaceOnly && selected?.type === 'text') {
+          patchElement(selected.id, { content: token }, false)
+          active.innerText = token
+          return
+        }
         document.execCommand('insertText', false, token)
         const text = active.innerText
         if (active.closest('.cell-edit')) {
@@ -1330,11 +1413,18 @@ export default function App() {
         (active instanceof HTMLInputElement &&
           (active.type === 'text' || active.type === 'search'))
       ) {
-        const start = active.selectionStart ?? active.value.length
-        const end = active.selectionEnd ?? start
-        const next =
-          active.value.slice(0, start) + token + active.value.slice(end)
-        const caret = start + token.length
+        const next = replaceOnly
+          ? token
+          : (() => {
+              const start = active.selectionStart ?? active.value.length
+              const end = active.selectionEnd ?? start
+              return (
+                active.value.slice(0, start) + token + active.value.slice(end)
+              )
+            })()
+        const caret = replaceOnly
+          ? token.length
+          : (active.selectionStart ?? active.value.length) + token.length
 
         if (selected?.type === 'table' && selectedCells[0]) {
           const { row, col } = selectedCells[0]
@@ -1352,7 +1442,6 @@ export default function App() {
         ) {
           patchElement(selected.id, { value: next }, false)
         } else {
-          // 未识别目标时仍写入输入框 DOM，避免“只能表格用”的感觉
           active.value = next
           active.dispatchEvent(new Event('input', { bubbles: true }))
         }
@@ -1363,7 +1452,7 @@ export default function App() {
         return
       }
 
-      // 选中文本 / 条码 / 二维码：追加变量
+      // 选中元素：条码/二维码/日期整段替换，其它追加
       if (selected && !selected.locked) {
         if (selected.type === 'table' && selectedCells.length > 0) {
           patchElement(selected.id, (el) => {
@@ -1381,19 +1470,19 @@ export default function App() {
         }
         if (selected.type === 'text') {
           patchElement(selected.id, {
-            content: `${selected.content || ''}${token}`,
+            content: replaceOnly
+              ? token
+              : `${selected.content || ''}${token}`,
           })
           return
         }
         if (selected.type === 'barcode' || selected.type === 'qrcode') {
-          patchElement(selected.id, {
-            value: `${selected.value || ''}${token}`,
-          })
+          patchElement(selected.id, { value: token })
           return
         }
       }
 
-      // 未选中可用目标：新建文本元素放入变量（表格外同样可用）
+      // 未选中可用目标：新建文本元素放入变量
       const el = createTextElement(5, 5)
       el.content = token
       el.width = Math.max(20, name.length * 4 + 8)
@@ -1725,6 +1814,16 @@ export default function App() {
               prev && prev.row < selected.rows && prev.col < next ? prev : null,
             )
           }}
+          onInsertRowsAt={(row, count, where) => {
+            if (!selected || selected.type !== 'table') return
+            handleInsertTableRows(selected.id, row, count, where)
+          }}
+          onInsertColsAt={(col, count, where) => {
+            if (!selected || selected.type !== 'table') return
+            handleInsertTableCols(selected.id, col, count, where)
+          }}
+          onDeleteSelectedRows={handleDeleteSelectedTableRows}
+          onDeleteSelectedCols={handleDeleteSelectedTableCols}
           onSetRowHeight={(i, h) => {
             if (!selected || selected.type !== 'table') return
             patchElement(selected.id, (el) =>

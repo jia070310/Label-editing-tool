@@ -24,6 +24,16 @@ export function variableToken(name: string): string {
   return `{{${name.trim()}}}`
 }
 
+/** 条码/二维码/日期等元素插入变量时只保留变量本身 */
+export function shouldReplaceWithVariableOnly(
+  el: LabelElement | null | undefined,
+): boolean {
+  if (!el) return false
+  if (el.type === 'barcode' || el.type === 'qrcode') return true
+  if (el.type === 'text' && el.textRole === 'date') return true
+  return false
+}
+
 export type DataRow = Record<string, string>
 
 export function substituteVariables(

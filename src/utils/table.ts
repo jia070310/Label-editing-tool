@@ -1470,6 +1470,46 @@ export function deleteCols(
   )
 }
 
+/** 批量删除多行（至少保留 1 行），从高索引向低索引删 */
+export function deleteRowsAtIndices(
+  el: TableElement,
+  indices: number[],
+): TableElement | null {
+  const rows = [...new Set(indices)]
+    .filter((r) => r >= 0 && r < el.rows)
+    .sort((a, b) => b - a)
+  if (rows.length === 0) return null
+  const maxDeletable = el.rows - 1
+  const toDelete = rows.slice(0, Math.min(rows.length, maxDeletable))
+  let result = el
+  for (const row of toDelete) {
+    const next = deleteRows(result, row, 1)
+    if (!next) return null
+    result = next
+  }
+  return result
+}
+
+/** 批量删除多列（至少保留 1 列），从高索引向低索引删 */
+export function deleteColsAtIndices(
+  el: TableElement,
+  indices: number[],
+): TableElement | null {
+  const cols = [...new Set(indices)]
+    .filter((c) => c >= 0 && c < el.cols)
+    .sort((a, b) => b - a)
+  if (cols.length === 0) return null
+  const maxDeletable = el.cols - 1
+  const toDelete = cols.slice(0, Math.min(cols.length, maxDeletable))
+  let result = el
+  for (const col of toDelete) {
+    const next = deleteCols(result, col, 1)
+    if (!next) return null
+    result = next
+  }
+  return result
+}
+
 export function setRowHeight(
   el: TableElement,
   index: number,

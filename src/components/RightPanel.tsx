@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type {
   BarcodeFormat,
   CellPos,
@@ -6,7 +7,7 @@ import type {
   TableCell,
   TableElement,
 } from '../types'
-import { canMerge, canSplit } from '../utils/table'
+import { canMerge, canSplit, MAX_TABLE_COLS, MAX_TABLE_ROWS } from '../utils/table'
 import {
   useSystemFonts,
   withCurrentFontOption,
@@ -25,6 +26,18 @@ interface Props {
   onSplit: () => void
   onSetRows: (n: number) => void
   onSetCols: (n: number) => void
+  onInsertRowsAt: (
+    row: number,
+    count: number,
+    where: 'above' | 'below',
+  ) => void
+  onInsertColsAt: (
+    col: number,
+    count: number,
+    where: 'left' | 'right',
+  ) => void
+  onDeleteSelectedRows: () => void
+  onDeleteSelectedCols: () => void
   onSetRowHeight: (index: number, h: number) => void
   onSetColWidth: (index: number, w: number) => void
   onUpdateCellStyle: (patch: Record<string, unknown>) => void
@@ -48,6 +61,10 @@ export function RightPanel({
   onSplit,
   onSetRows,
   onSetCols,
+  onInsertRowsAt,
+  onInsertColsAt,
+  onDeleteSelectedRows,
+  onDeleteSelectedCols,
   onSetRowHeight,
   onSetColWidth,
   onUpdateCellStyle,
@@ -62,6 +79,7 @@ export function RightPanel({
   onInsertVariable,
 }: Props) {
   const systemFonts = useSystemFonts()
+  const [insertCount, setInsertCount] = useState('1')
 
   if (!selected) {
     return (
@@ -127,6 +145,27 @@ export function RightPanel({
     const splitPos = safeCells[0]
     const mergeEnabled = canMerge(table, safeCells)
     const splitEnabled = splitPos ? canSplit(table, splitPos) : false
+    const selectedRowIndices = [...new Set(safeCells.map((c) => c.row))].sort(
+      (a, b) => a - b,
+    )
+    const selectedColIndices = [...new Set(safeCells.map((c) => c.col))].sort(
+      (a, b) => a - b,
+    )
+    const insertRowRoom = Math.max(0, MAX_TABLE_ROWS - table.rows)
+    const insertColRoom = Math.max(0, MAX_TABLE_COLS - table.cols)
+    const parsedInsertCount = Math.max(
+      1,
+      Math.min(
+        99,
+        Number.parseInt(insertCount, 10) || 1,
+      ),
+    )
+    const canDeleteRows =
+      selectedRowIndices.length > 0 &&
+      selectedRowIndices.length < table.rows
+    const canDeleteCols =
+      selectedColIndices.length > 0 &&
+      selectedColIndices.length < table.cols
 
     return (
       <aside className="right-panel">
@@ -231,6 +270,89 @@ export function RightPanel({
               </div>
             </div>
             <p className="hint">最多 40 行 × 20 列。改行列后无效选区会自动清除。</p>
+          </div>
+
+          <div className="panel-section">
+            <h4>插入 / 删除行列</h4>
+            <div className="panel-row">
+              <label>数量</label>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={insertCount}
+                onChange={(e) => setInsertCount(e.target.value)}
+              />
+            </div>
+            <div className="btn-pair">
+              <button
+                disabled={!activePos || insertRowRoom < 1}
+                onClick={() =>
+                  onInsertRowsAt(
+                    activePos!.row,
+                    Math.min(parsedInsertCount, insertRowRoom),
+                    'above',
+                  )
+                }
+              >
+                上方插入行
+              </button>
+              <button
+                disabled={!activePos || insertRowRoom < 1}
+                onClick={() =>
+                  onInsertRowsAt(
+                    activePos!.row,
+                    Math.min(parsedInsertCount, insertRowRoom),
+                    'below',
+                  )
+                }
+              >
+                下方插入行
+              </button>
+            </div>
+            <div className="btn-pair">
+              <button
+                disabled={!activePos || insertColRoom < 1}
+                onClick={() =>
+                  onInsertColsAt(
+                    activePos!.col,
+                    Math.min(parsedInsertCount, insertColRoom),
+                    'left',
+                  )
+                }
+              >
+                左侧插入列
+              </button>
+              <button
+                disabled={!activePos || insertColRoom < 1}
+                onClick={() =>
+                  onInsertColsAt(
+                    activePos!.col,
+                    Math.min(parsedInsertCount, insertColRoom),
+                    'right',
+                  )
+                }
+              >
+                右侧插入列
+              </button>
+            </div>
+            <div className="btn-pair">
+              <button disabled={!canDeleteRows} onClick={onDeleteSelectedRows}>
+                删除选中行
+                {selectedRowIndices.length > 1
+                  ? ` (${selectedRowIndices.length})`
+                  : ''}
+              </button>
+              <button disabled={!canDeleteCols} onClick={onDeleteSelectedCols}>
+                删除选中列
+                {selectedColIndices.length > 1
+                  ? ` (${selectedColIndices.length})`
+                  : ''}
+              </button>
+            </div>
+            <p className="hint">
+              先选中单元格确定位置；Ctrl 多选后可批量删除多行或多列。
+            </p>
           </div>
 
           <div className="panel-section">
