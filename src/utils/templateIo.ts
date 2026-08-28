@@ -2,6 +2,7 @@ import type { LabelTemplate } from './storage'
 import {
   TEMPLATE_FILE_EXT,
   defaultExportFileName,
+  defaultExportFileNameUnique,
   serializeTemplateFile,
 } from './storage'
 import { isElectronApp } from './electron'
@@ -48,11 +49,14 @@ function pickTextFile(): Promise<{ name: string; content: string } | null> {
   })
 }
 
-/** 导出单个模板到本地文件 */
+/** 导出单个模板到本地文件（不写入本地模板库） */
 export async function exportTemplateFile(
   template: LabelTemplate,
+  options?: { uniqueName?: boolean },
 ): Promise<{ ok: boolean; cancelled?: boolean; path?: string }> {
-  const fileName = defaultExportFileName(template)
+  const fileName = options?.uniqueName
+    ? defaultExportFileNameUnique(template)
+    : defaultExportFileName(template)
   const content = serializeTemplateFile(template)
 
   if (isElectronApp() && window.electronAPI?.saveTextFile) {

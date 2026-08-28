@@ -127,6 +127,11 @@ button {
 .format-bar {
   gap: 6px;
   font-size: 12px;
+  flex-wrap: nowrap;
+}
+
+.format-bar > * {
+  flex-shrink: 0;
 }
 
 .format-bar select,
@@ -1910,18 +1915,50 @@ body.table-moving * {
   line-height: 1.4;
 }
 
+.panel-variable-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.panel-variable-row .variable-insert .tool-btn {
+  height: 28px;
+}
+
+.panel-variable-row .hint-inline {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .translate-cell-btn,
 .format-bar .translate-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   margin-top: 8px;
-  padding: 6px 10px;
+  padding: 0 8px;
   border-radius: 6px;
   border: 1px solid var(--accent-border);
   background: var(--accent-soft);
   color: var(--text);
   font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.translate-btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.format-bar .translate-btn .label {
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .translate-btn-row {
@@ -1947,6 +1984,7 @@ body.table-moving * {
 .format-bar .translate-btn {
   margin-top: 0;
   height: 28px;
+  min-width: max-content;
 }
 
 .translate-cell-btn:hover:not(:disabled),
@@ -2427,6 +2465,41 @@ body.table-moving * {
 
 .feedback-dialog {
   width: min(480px, calc(100vw - 32px));
+}
+
+.save-template-dialog {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.save-template-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.save-template-options {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.save-template-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.save-template-option.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.save-template-option input {
+  margin-top: 2px;
 }
 
 .about-dialog {

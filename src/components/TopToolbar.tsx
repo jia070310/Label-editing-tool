@@ -420,26 +420,28 @@ export function TopToolbar({
           disabled={!canInsertVariable}
           onInsert={onInsertVariable}
         />
-        <button
-          className="tool-btn translate-btn"
-          title="翻译选中单元格中文为英文（多选时批量翻译各格首行）"
-          disabled={!canTranslateCell || translating}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={onTranslateCell}
-        >
-          <Languages size={15} />
-          <span className="label">{translating ? '翻译中…' : '翻译 EN'}</span>
-        </button>
-        <button
-          className="tool-btn translate-btn"
-          title="去掉选中单元格下方的英文翻译行（支持多选）"
-          disabled={!canRemoveTranslation || translating}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={onRemoveTranslationCell}
-        >
-          <Eraser size={15} />
-          <span className="label">去翻译</span>
-        </button>
+        <div className="translate-btn-group">
+          <button
+            className="tool-btn translate-btn"
+            title="翻译选中单元格中文为英文（多选时批量翻译各格首行）"
+            disabled={!canTranslateCell || translating}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onTranslateCell}
+          >
+            <Languages size={15} />
+            <span className="label">{translating ? '翻译中' : '翻译 EN'}</span>
+          </button>
+          <button
+            className="tool-btn translate-btn secondary"
+            title="去掉选中单元格下方的英文翻译行（支持多选）"
+            disabled={!canRemoveTranslation || translating}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onRemoveTranslationCell}
+          >
+            <Eraser size={15} />
+            <span className="label">去翻译</span>
+          </button>
+        </div>
         <label className="coord-field">
           X
           <input

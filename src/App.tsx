@@ -6,6 +6,10 @@ import { RightPanel } from './components/RightPanel'
 import { ElementView } from './components/ElementView'
 import { HomeScreen } from './components/HomeScreen'
 import { NewLabelDialog } from './components/NewLabelDialog'
+import {
+  SaveTemplateDialog,
+  type SaveTemplateMode,
+} from './components/SaveTemplateDialog'
 import { useHistory } from './hooks/useHistory'
 import type {
   CellPos,
@@ -55,6 +59,7 @@ import {
   prepareImportedTemplate,
   renameTemplate,
   type LabelTemplate,
+  uniqueTemplateName,
   upsertTemplate,
 } from './utils/storage'
 import { exportTemplateFile, pickTemplateFileContent } from './utils/templateIo'
@@ -283,8 +288,11 @@ export default function App() {
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [showPrintDialog, setShowPrintDialog] = useState(false)
   const [showBatchPrintDialog, setShowBatchPrintDialog] = useState(false)
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [printSheet, setPrintSheet] = useState<HTMLElement | null>(null)
   const [templateId, setTemplateId] = useState<string | null>(null)
+  const [isPersisted, setIsPersisted] = useState(false)
+  const [persistedName, setPersistedName] = useState('')
 
   const history = useHistory<LabelElement[]>([])
   const [settings, setSettings] = useState<LabelSettings>(defaultLabelSettings())
@@ -322,7 +330,14 @@ export default function App() {
     })
   }, [selected, selectedCells])
 
-  const canInsertVariable = true
+  const canInsertVariable = useMemo(() => {
+    if (selected?.locked) return false
+    if (!selected) return true
+    if (selected.type === 'text') return true
+    if (selected.type === 'barcode' || selected.type === 'qrcode') return true
+    if (selected.type === 'table' && selectedCells.length > 0) return true
+    return false
+  }, [selected, selectedCells])
 
   const tableCellStyle = useMemo(() => {
     if (!selected || selected.type !== 'table' || selectedCells.length === 0)
@@ -380,7 +395,11 @@ export default function App() {
     if (view === 'editor') applyPrintPageSize(settings)
   }, [view, settings])
 
-  const openEditor = (tpl: LabelTemplate) => {
+  const openEditor = (
+    tpl: LabelTemplate,
+    options?: { persisted?: boolean },
+  ) => {
+    const persisted = options?.persisted ?? true
     setTemplateId(tpl.id)
     setSettings(tpl.settings)
     history.reset(structuredClone(tpl.elements))
@@ -388,6 +407,8 @@ export default function App() {
     setSelectedCells([])
     setEditingCell(null)
     setZoom(fitZoom(tpl.settings.width, tpl.settings.height))
+    setIsPersisted(persisted)
+    setPersistedName(persisted ? tpl.settings.name : '')
     setView('editor')
   }
 
@@ -400,14 +421,16 @@ export default function App() {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
-    setTemplates(upsertTemplate(tpl))
-    openEditor(tpl)
+    openEditor(tpl, { persisted: false })
     setShowNewDialog(false)
   }
 
   const goHome = () => {
     setView('home')
     setTemplateId(null)
+    setIsPersisted(false)
+    setPersistedName('')
+    setShowSaveDialog(false)
     setSelectedIds([])
     setSelectedCells([])
     setEditingCell(null)
@@ -1384,21 +1407,60 @@ export default function App() {
 
   const saveTemplate = () => {
     if (!templateId) return
-    const tpl: LabelTemplate = {
-      id: templateId,
-      settings,
-      elements: structuredClone(elements),
-      createdAt:
-        templates.find((t) => t.id === templateId)?.createdAt ?? Date.now(),
-      updatedAt: Date.now(),
-    }
-    setTemplates(upsertTemplate(tpl))
-    alert('模板已保存')
+    setShowSaveDialog(true)
   }
 
-  const exportOneTemplate = async (tpl: LabelTemplate) => {
+  const confirmSaveTemplate = (mode: SaveTemplateMode, name: string) => {
+    if (!templateId) return
+    const existing = loadTemplates()
+    const source = existing.find((t) => t.id === templateId)
+
+    if (mode === 'overwrite') {
+      if (!isPersisted) return
+      const nextSettings = {
+        ...settings,
+        name: name.trim() || settings.name,
+      }
+      const tpl: LabelTemplate = {
+        id: templateId,
+        settings: nextSettings,
+        elements: structuredClone(elements),
+        createdAt: source?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+      }
+      setSettings(nextSettings)
+      setPersistedName(nextSettings.name)
+      setTemplates(upsertTemplate(tpl))
+      setShowSaveDialog(false)
+      alert('原模板已更新')
+      return
+    }
+
+    const newId = uuid()
+    const uniqueName = uniqueTemplateName(name, existing)
+    const nextSettings = { ...settings, name: uniqueName }
+    const tpl: LabelTemplate = {
+      id: newId,
+      settings: nextSettings,
+      elements: structuredClone(elements),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    setTemplateId(newId)
+    setSettings(nextSettings)
+    setIsPersisted(true)
+    setPersistedName(uniqueName)
+    setTemplates(upsertTemplate(tpl))
+    setShowSaveDialog(false)
+    alert('已另存为新模板')
+  }
+
+  const exportOneTemplate = async (
+    tpl: LabelTemplate,
+    options?: { uniqueName?: boolean },
+  ) => {
     try {
-      const result = await exportTemplateFile(tpl)
+      const result = await exportTemplateFile(tpl, options)
       if (result.cancelled) return
       if (result.ok) {
         alert(result.path ? `模板已导出到：\n${result.path}` : '模板已导出')
@@ -1420,9 +1482,7 @@ export default function App() {
         templates.find((t) => t.id === templateId)?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     }
-    // 导出前顺带写入本地库，避免文件与当前编辑不一致
-    setTemplates(upsertTemplate(tpl))
-    await exportOneTemplate(tpl)
+    await exportOneTemplate(tpl, { uniqueName: true })
   }
 
   const importTemplate = async () => {
@@ -1694,6 +1754,8 @@ export default function App() {
           canRemoveTranslation={canRemoveTranslation}
           translating={translating}
           onSetTableFontSize={setTableFontSize}
+          canInsertVariable={canInsertVariable}
+          onInsertVariable={handleInsertVariable}
         />
       </div>
 
@@ -1723,6 +1785,15 @@ export default function App() {
         elements={elements}
         settings={settings}
         onClose={() => setShowBatchPrintDialog(false)}
+      />
+
+      <SaveTemplateDialog
+        open={showSaveDialog}
+        currentName={settings.name}
+        canOverwrite={isPersisted}
+        originalName={persistedName}
+        onClose={() => setShowSaveDialog(false)}
+        onConfirm={confirmSaveTemplate}
       />
     </div>
   )

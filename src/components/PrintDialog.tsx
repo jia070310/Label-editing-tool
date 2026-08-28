@@ -172,6 +172,8 @@ export function PrintDialog({ open, sheet, settings, onClose }: Props) {
             {desktop
               ? ' Windows 使用物理尺寸直打，不再「适应页面」。'
               : ' 请使用桌面版打印（npm run desktop）。'}
+            {' '}
+            若打印后多走一张空白，请在 Windows 打印机属性里把纸张尺寸设为与标签一致，并关闭「打印后走纸」类选项。
           </p>
           {error && (
             <div className="form-error print-error-block">

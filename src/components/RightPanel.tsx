@@ -14,6 +14,7 @@ import {
 import { hasTextDecoration, toggleTextDecoration } from '../utils/textStyle'
 import { normalizeRotation, rotateElementBy90 } from '../utils/rotate'
 import { NumericDraftInput } from './NumericDraftInput'
+import { VariableInsertButton } from './VariableInsertButton'
 
 interface Props {
   selected: LabelElement | null
@@ -34,6 +35,8 @@ interface Props {
   canRemoveTranslation: boolean
   translating: boolean
   onSetTableFontSize: (size: number) => void
+  canInsertVariable: boolean
+  onInsertVariable: (name: string) => void
 }
 
 export function RightPanel({
@@ -55,6 +58,8 @@ export function RightPanel({
   canRemoveTranslation,
   translating,
   onSetTableFontSize,
+  canInsertVariable,
+  onInsertVariable,
 }: Props) {
   const systemFonts = useSystemFonts()
 
@@ -419,6 +424,13 @@ export function RightPanel({
                 onChange={(e) => onUpdateCellContent(e.target.value, false)}
                 onBlur={() => onUpdateCellCommit?.()}
               />
+              <div className="panel-variable-row">
+                <VariableInsertButton
+                  disabled={!canInsertVariable}
+                  onInsert={onInsertVariable}
+                />
+                <span className="hint-inline">可插入 {'{{品名}}'} 等变量</span>
+              </div>
               <div className="translate-btn-row">
                 <button
                   className="translate-cell-btn"
@@ -596,8 +608,15 @@ export function RightPanel({
               onChange={(e) => onUpdate({ content: e.target.value }, false)}
               onBlur={() => onUpdateCommit?.()}
             />
+            <div className="panel-variable-row">
+              <VariableInsertButton
+                disabled={!canInsertVariable}
+                onInsert={onInsertVariable}
+              />
+              <span className="hint-inline">日期元素同样支持变量</span>
+            </div>
             <p className="hint">
-              可用 {'{{品名}}'} 等变量；顶部「变量」可插入。文本、表格、条码均支持，再点「批量」导入 CSV。
+              可用 {'{{品名}}'}、{'{{日期}}'} 等变量；配合「批量」导入 CSV 打印。
             </p>
           </div>
         )}
@@ -613,8 +632,17 @@ export function RightPanel({
                 onBlur={() => onUpdateCommit?.()}
               />
             </div>
+            <div className="panel-variable-row">
+              <VariableInsertButton
+                disabled={!canInsertVariable}
+                onInsert={onInsertVariable}
+              />
+              <span className="hint-inline">
+                {selected.type === 'barcode' ? '条码内容' : '二维码内容'}可填变量
+              </span>
+            </div>
             <p className="hint">
-              可填 {'{{品名}}'} 等变量，顶部「变量」可插入；配合「批量」打印。
+              例如 {'{{SKU}}'}、{'{{条码}}'}；批量打印时按 CSV 列替换。
             </p>
             {selected.type === 'barcode' && (
               <>

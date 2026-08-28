@@ -13,6 +13,9 @@ export const PRESET_VARIABLES = [
   '绑带',
   '价格',
   '高度',
+  '日期',
+  'SKU',
+  '条码',
 ] as const
 
 export type PresetVariable = (typeof PRESET_VARIABLES)[number]
@@ -103,6 +106,9 @@ export function buildSampleCsv(headers: string[]): string {
     绑带: '标准',
     价格: '388',
     高度: '270',
+    日期: '2026-08-28',
+    SKU: 'SKU-001',
+    条码: '123456789012',
   }
   const sample2: Record<string, string> = {
     版本: '简约',
@@ -113,6 +119,9 @@ export function buildSampleCsv(headers: string[]): string {
     绑带: '加长',
     价格: '498',
     高度: '280',
+    日期: '2026-08-29',
+    SKU: 'SKU-002',
+    条码: '987654321098',
   }
   const row1 = cols.map((h, i) => sample1[h] ?? `示例${h}${i + 1}`).join(',')
   const row2 = cols.map((h, i) => sample2[h] ?? `示例${h}${i + 10}`).join(',')

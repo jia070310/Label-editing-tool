@@ -436,17 +436,23 @@ try {
   try {
     $doc.DefaultPageSettings.PaperSize = $paper
   } catch {
-    Write-PrintLog "set custom paper failed: $($_.Exception.Message); fallback to default paper"
-    $paper = $doc.DefaultPageSettings.PaperSize
+    Write-PrintLog "DefaultPageSettings set paper failed: $($_.Exception.Message); will force in QueryPageSettings"
   }
   $doc.DefaultPageSettings.Landscape = $false
   $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
   $doc.OriginAtMargins = $false
+  $doc.PrinterSettings.Copies = 1
+  try { $doc.PrinterSettings.Collate = $false } catch {}
+  $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
 
   $renderState = @{ Done = $false; Bounds = ""; Error = "" }
   $doc.add_PrintPage({
     param($sender, $e)
     try {
+      if ($renderState.Done) {
+        $e.HasMorePages = $false
+        return
+      }
       # 标签机硬边距：Graphics(0,0) 在可打印区左上角。先移回纸张原点再满幅绘制，
       # 并略微内缩，避免顶/底边框落在不可打印区被裁掉。
       $hardX = 0
@@ -457,8 +463,8 @@ try {
       } catch {}
       $pw = $e.PageSettings.PaperSize.Width
       $ph = $e.PageSettings.PaperSize.Height
-      if ($pw -lt 1) { $pw = $wHundredths }
-      if ($ph -lt 1) { $ph = $hHundredths }
+      if ($pw -lt 1 -or [Math]::Abs($pw - $wHundredths) -gt 8) { $pw = $wHundredths }
+      if ($ph -lt 1 -or [Math]::Abs($ph - $hHundredths) -gt 8) { $ph = $hHundredths }
       if ($hardX -ne 0 -or $hardY -ne 0) {
         $e.Graphics.TranslateTransform(-$hardX, -$hardY)
       }
@@ -481,7 +487,14 @@ try {
 
   $doc.add_QueryPageSettings({
     param($sender, $e)
-    Write-PrintLog "QueryPageSettings paper=$($e.PageSettings.PaperSize.Width)x$($e.PageSettings.PaperSize.Height)"
+    try {
+      $e.PageSettings.PaperSize = $paper
+      $e.PageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+      $e.PageSettings.Landscape = $false
+    } catch {
+      Write-PrintLog "QueryPageSettings set paper failed: $($_.Exception.Message)"
+    }
+    Write-PrintLog "QueryPageSettings paper=$($e.PageSettings.PaperSize.PaperName) $($e.PageSettings.PaperSize.Width)x$($e.PageSettings.PaperSize.Height)"
   }.GetNewClosure())
 
   Write-PrintLog "calling Print()"

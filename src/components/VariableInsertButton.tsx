@@ -80,7 +80,7 @@ export function VariableInsertButton({ disabled, onInsert }: Props) {
         type="button"
         className={`tool-btn ${open ? 'active' : ''}`}
         disabled={disabled}
-        title="插入变量：可用于文本、表格、条码/二维码；批量打印时替换"
+        title="插入变量：文本、表格、条码、二维码、日期；批量打印时替换"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setOpen((v) => !v)}
       >
@@ -97,7 +97,7 @@ export function VariableInsertButton({ disabled, onInsert }: Props) {
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="variable-insert-title">插入变量</div>
-            <p className="variable-insert-hint">文本 / 表格 / 条码均可使用</p>
+            <p className="variable-insert-hint">文本 / 表格 / 条码 / 二维码 / 日期</p>
             {PRESET_VARIABLES.map((name) => (
               <button
                 key={name}

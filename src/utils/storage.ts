@@ -63,6 +63,22 @@ export function nextDefaultName(templates: LabelTemplate[]): string {
   return `新建标签_${n}`
 }
 
+/** 在已有模板列表中生成不重复名称 */
+export function uniqueTemplateName(
+  base: string,
+  existing: LabelTemplate[],
+  excludeId?: string,
+): string {
+  const names = new Set(
+    existing.filter((t) => t.id !== excludeId).map((t) => t.settings.name),
+  )
+  let name = base.trim() || '未命名模板'
+  if (!names.has(name)) return name
+  let n = 2
+  while (names.has(`${name} (${n})`)) n += 1
+  return `${name} (${n})`
+}
+
 /** 模板文件标识（导出 / 导入） */
 export const TEMPLATE_FILE_FORMAT = 'lemon-label-template'
 export const TEMPLATE_FILE_VERSION = 1
@@ -159,6 +175,23 @@ export function defaultExportFileName(template: LabelTemplate): string {
     .trim()
     .slice(0, 40)
   return `${safe || '模板'}.${TEMPLATE_FILE_EXT}`
+}
+
+/** 导出文件默认名，避免与已有文件重名时覆盖 */
+export function defaultExportFileNameUnique(
+  template: LabelTemplate,
+  suffix = '导出',
+): string {
+  const safe = (template.settings.name || '模板')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .trim()
+    .slice(0, 32)
+  const stamp = new Date()
+    .toISOString()
+    .slice(0, 16)
+    .replace('T', '_')
+    .replace(/:/g, '')
+  return `${safe || '模板'}_${suffix}_${stamp}.${TEMPLATE_FILE_EXT}`
 }
 
 export { DESIGN_DPI, MM_TO_PX, mmToPx, ptToPx, mmStyle, ptStyle } from './dpi'
