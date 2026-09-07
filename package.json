@@ -1,7 +1,7 @@
 {
   "name": "lemon-label-tool",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "柠檬标签工具",
   "author": "Lemon Label",
   "type": "module",
@@ -14,6 +14,7 @@
     "desktop:build": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win",
     "dist:dir": "npm run build && electron-builder --win --dir",
+    "icons": "node scripts/generate-icons.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
