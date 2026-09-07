@@ -5,7 +5,19 @@
 仓库：https://github.com/jia070310/Label-editing-tool  
 作者：jia070310
 
+## 界面预览
+
+首页：新建模板、导入模板，管理本地标签库。
+
+![首页](docs/screenshots/home.png)
+
+编辑器：画布毫米级设计，工具栏与左侧元素面板。
+
 ![编辑器界面](docs/screenshots/editor.png)
+
+属性面板：表格行列、边框与单元格样式等可调。
+
+![编辑器属性面板](docs/screenshots/editor-properties.png)
 
 ![关于窗口](docs/screenshots/about.png)
 
