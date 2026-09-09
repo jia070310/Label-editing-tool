@@ -143,8 +143,9 @@ function findGridHit(
     const x0 = (seg.startPct / 100) * rect.width
     const x1 = (seg.endPct / 100) * rect.width
     const d = Math.abs(y - py)
+    // 顶/底边略放宽，但仍限制在细带内，避免整行都变成 row-resize
     const slop =
-      seg.edge === 'top' || seg.edge === 'bottom' ? hitSlop * 1.75 : hitSlop
+      seg.edge === 'top' || seg.edge === 'bottom' ? hitSlop + 2 : hitSlop
     if (d <= slop && x >= x0 - hitSlop && x <= x1 + hitSlop) {
       nearRow.push({ seg, d })
     }
@@ -601,7 +602,8 @@ export const TableView = memo(function TableView({
     }
     const widths = getRowColWidths(layout, anchorRow)
     const startWidth = widths[index] ?? layout.colWidths[index] ?? 20
-    const isMove = e.altKey
+    // 中间竖线：默认左右对调、外框不变；Alt=改变表格总宽
+    const isMove = !e.altKey
     const singleSegment = e.altKey && qKeyRef.current
     const range = singleSegment
       ? { rowStart: anchorRow, rowEnd: anchorRow + 1 }
@@ -617,6 +619,19 @@ export const TableView = memo(function TableView({
         rowStart: range.rowStart,
         rowEndExclusive: range.rowEnd,
         expandMerge: !singleSegment,
+      }
+    } else if (singleSegment) {
+      // Alt+Q：只挪当前小段（仍保持该段所在行总宽）
+      beginGridDrag('table-grid-resizing-col', true)
+      gridDragRef.current = {
+        kind: 'col',
+        index,
+        startX: e.clientX,
+        startWidth,
+        mode: 'move',
+        rowStart: range.rowStart,
+        rowEndExclusive: range.rowEnd,
+        expandMerge: false,
       }
     } else {
       beginGridDrag('table-grid-resizing-col', false)
@@ -666,27 +681,19 @@ export const TableView = memo(function TableView({
         )
       }
     }
-    let isMove = e.altKey
-    if (edge === 'top') isMove = false
-    // 末行上方的内线：默认在上下两行之间分配高度（否则只改上一行、末行不动）
-    if (
-      !isMove &&
-      !edge &&
-      layout.rows > 1 &&
-      index === layout.rows - 2
-    ) {
-      isMove = true
-    }
+    // 顶/底边：改外框高；中间横线：默认上下对调、外框不变；Alt=改变表格总高
+    let isMove = !e.altKey
+    if (edge === 'top' || edge === 'bottom') isMove = false
+    const singleSegment = e.altKey && qKeyRef.current
+    const range = singleSegment
+      ? { colStart: anchorCol, colEnd: anchorCol + 1 }
+      : findAlignedRowColSpan(layout, boundaryIndex, anchorCol)
     const startHeight =
       layout.rowColHeights?.[
         isMove ? boundaryIndex : rowIndex
       ]?.[anchorCol] ??
       layout.rowHeights[isMove ? boundaryIndex : rowIndex] ??
       8
-    const singleSegment = e.altKey && qKeyRef.current
-    const range = singleSegment
-      ? { colStart: anchorCol, colEnd: anchorCol + 1 }
-      : findAlignedRowColSpan(layout, boundaryIndex, anchorCol)
     const dragIndex = isMove ? boundaryIndex : rowIndex
     if (isMove) {
       beginGridDrag('table-grid-resizing-row', true)
@@ -699,6 +706,22 @@ export const TableView = memo(function TableView({
         colStart: range.colStart,
         colEndExclusive: range.colEnd,
         expandMerge: !singleSegment,
+        edge,
+      }
+    } else if (singleSegment) {
+      beginGridDrag('table-grid-resizing-row', true)
+      gridDragRef.current = {
+        kind: 'row',
+        index: boundaryIndex,
+        startY: e.clientY,
+        startHeight:
+          layout.rowColHeights?.[boundaryIndex]?.[anchorCol] ??
+          layout.rowHeights[boundaryIndex] ??
+          8,
+        mode: 'move',
+        colStart: range.colStart,
+        colEndExclusive: range.colEnd,
+        expandMerge: false,
         edge,
       }
     } else {
@@ -728,7 +751,7 @@ export const TableView = memo(function TableView({
     preferLineOnly = false,
   ) => {
     if (!wrapRef.current || !showGridResizers) return null
-    const slop = Math.max(10, 10 / Math.max(zoom, 0.25))
+    // getBoundingClientRect 已是屏幕像素；勿再 /zoom，否则缩小时命中带过大、整表都像在拖线
     return findGridHit(
       wrapRef.current,
       clientX,
@@ -736,7 +759,7 @@ export const TableView = memo(function TableView({
       colSegments,
       rowSegments,
       preferLineOnly,
-      slop,
+      6,
     )
   }
 
@@ -841,7 +864,7 @@ export const TableView = memo(function TableView({
         .join(' ')}
       title={
         showGridResizers
-          ? '拖分隔线调整尺寸；Alt=移动对齐整段；Alt+Q=仅移动当前单段'
+          ? '拖中间分隔线：邻格对调，外框不变；Alt=改表格总尺寸；Alt+Q=只挪当前小段；拖顶/底边可改外框高'
           : undefined
       }
       onMouseMove={handleWrapMouseMove}

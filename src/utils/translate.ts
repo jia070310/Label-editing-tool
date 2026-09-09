@@ -68,32 +68,171 @@ export function removeTranslationFromCell(content: string): string {
   return [chinese, ...rest].join('\n')
 }
 
-interface MyMemoryResponse {
-  responseStatus: number
-  responseDetails?: string
-  responseData?: { translatedText?: string }
+const CACHE_KEY = 'lemon-label-translate-cache-v1'
+const CACHE_MAX = 800
+const memoryCache = new Map<string, string>()
+
+function loadDiskCache(): void {
+  if (memoryCache.size > 0) return
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return
+    const obj = JSON.parse(raw) as Record<string, string>
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof k === 'string' && typeof v === 'string' && v.trim()) {
+        memoryCache.set(k, v.trim())
+      }
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
-/** 中文 → 英文（MyMemory 免费接口） */
+function saveDiskCache(): void {
+  try {
+    // 超出上限时丢掉较早条目
+    if (memoryCache.size > CACHE_MAX) {
+      const drop = memoryCache.size - CACHE_MAX
+      let i = 0
+      for (const key of memoryCache.keys()) {
+        memoryCache.delete(key)
+        if (++i >= drop) break
+      }
+    }
+    const obj: Record<string, string> = {}
+    for (const [k, v] of memoryCache) obj[k] = v
+    localStorage.setItem(CACHE_KEY, JSON.stringify(obj))
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function cacheGet(q: string): string | null {
+  loadDiskCache()
+  return memoryCache.get(q) ?? null
+}
+
+function cacheSet(q: string, en: string): void {
+  loadDiskCache()
+  memoryCache.set(q, en)
+  saveDiskCache()
+}
+
+async function fetchWithTimeout(
+  url: string,
+  ms = 10000,
+): Promise<Response> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { signal: ctrl.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Google 免费 gtx 接口（无 Key，桌面端主进程更稳） */
+async function translateViaGoogle(q: string): Promise<string> {
+  const url =
+    'https://translate.googleapis.com/translate_a/single?' +
+    new URLSearchParams({
+      client: 'gtx',
+      sl: 'zh-CN',
+      tl: 'en',
+      dt: 't',
+      q,
+    })
+  const res = await fetchWithTimeout(url)
+  if (!res.ok) throw new Error(`Google HTTP ${res.status}`)
+  const data = (await res.json()) as unknown
+  // [[["Hello","你好",null,null,1]],null,"zh-CN",...]
+  if (!Array.isArray(data) || !Array.isArray(data[0])) {
+    throw new Error('Google 返回格式异常')
+  }
+  const parts: string[] = []
+  for (const chunk of data[0]) {
+    if (Array.isArray(chunk) && typeof chunk[0] === 'string') {
+      parts.push(chunk[0])
+    }
+  }
+  const text = parts.join('').trim()
+  if (!text) throw new Error('Google 未返回译文')
+  return text
+}
+
+/** MyMemory 备用 */
+async function translateViaMyMemory(q: string): Promise<string> {
+  const url =
+    'https://api.mymemory.translated.net/get?' +
+    new URLSearchParams({ q, langpair: 'zh-CN|en' })
+  const res = await fetchWithTimeout(url, 12000)
+  if (!res.ok) throw new Error('MyMemory 暂时不可用')
+  const data = (await res.json()) as {
+    responseStatus: number
+    responseDetails?: string
+    responseData?: { translatedText?: string }
+  }
+  if (data.responseStatus !== 200) {
+    throw new Error(data.responseDetails || 'MyMemory 翻译失败')
+  }
+  const translated = data.responseData?.translatedText?.trim()
+  if (!translated) throw new Error('MyMemory 未返回译文')
+  return translated
+}
+
+async function translateRemote(q: string): Promise<string> {
+  // Electron：走主进程，避免渲染进程 CORS / 限流抖动
+  const api = window.electronAPI?.translateText
+  if (api) {
+    const result = await api(q)
+    if (result?.ok && result.text?.trim()) return result.text.trim()
+    // 主进程失败时继续尝试渲染进程直连
+  }
+
+  try {
+    return await translateViaGoogle(q)
+  } catch {
+    return await translateViaMyMemory(q)
+  }
+}
+
+/** 中文 → 英文（本地缓存 + Google 优先 + MyMemory 备用） */
 export async function translateZhToEn(text: string): Promise<string> {
   const q = text.trim()
   if (!q) throw new Error('没有可翻译的文字')
   if (!hasChinese(q)) throw new Error('请先输入中文内容')
 
-  const url =
-    'https://api.mymemory.translated.net/get?' +
-    new URLSearchParams({ q, langpair: 'zh-CN|en' })
+  const hit = cacheGet(q)
+  if (hit) return hit
 
-  const res = await fetch(url)
-  if (!res.ok) throw new Error('翻译服务暂时不可用，请稍后重试')
+  const translated = await translateRemote(q)
+  cacheSet(q, translated)
+  return translated
+}
 
-  const data = (await res.json()) as MyMemoryResponse
-  if (data.responseStatus !== 200) {
-    throw new Error(data.responseDetails || '翻译失败')
+/** 有限并发执行异步任务 */
+export async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+  onProgress?: (done: number, total: number) => void,
+): Promise<R[]> {
+  const total = items.length
+  const results = new Array<R>(total)
+  let next = 0
+  let done = 0
+  const limit = Math.max(1, Math.min(concurrency, total || 1))
+
+  async function runOne(): Promise<void> {
+    while (true) {
+      const i = next++
+      if (i >= total) return
+      results[i] = await worker(items[i], i)
+      done += 1
+      onProgress?.(done, total)
+    }
   }
 
-  const translated = data.responseData?.translatedText?.trim()
-  if (!translated) throw new Error('未获取到翻译结果')
-
-  return translated
+  await Promise.all(Array.from({ length: limit }, () => runOne()))
+  return results
 }

@@ -14,6 +14,16 @@
   --right-w: 260px;
   --ruler: 22px;
   --shadow: 0 1px 3px rgba(20, 24, 36, 0.08);
+  /* 画布交互光标：黑色主描边 + 浅色描边底，白底标签上也清晰 */
+  --cursor-col: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.25'%3E%3Cpath d='M12 3v18'/%3E%3Cpath d='M9 12H4m0 0l2.5-2.5M4 12l2.5 2.5'/%3E%3Cpath d='M15 12h5m0 0l-2.5-2.5M20 12l-2.5 2.5'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.75'%3E%3Cpath d='M12 3v18'/%3E%3Cpath d='M9 12H4m0 0l2.5-2.5M4 12l2.5 2.5'/%3E%3Cpath d='M15 12h5m0 0l-2.5-2.5M20 12l-2.5 2.5'/%3E%3C/g%3E%3C/svg%3E") 12 12, col-resize;
+  --cursor-row: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.25'%3E%3Cpath d='M3 12h18'/%3E%3Cpath d='M12 9V4m0 0l-2.5 2.5M12 4l2.5 2.5'/%3E%3Cpath d='M12 15v5m0 0l-2.5-2.5M12 20l2.5-2.5'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.75'%3E%3Cpath d='M3 12h18'/%3E%3Cpath d='M12 9V4m0 0l-2.5 2.5M12 4l2.5 2.5'/%3E%3Cpath d='M12 15v5m0 0l-2.5-2.5M12 20l2.5-2.5'/%3E%3C/g%3E%3C/svg%3E") 12 12, row-resize;
+  --cursor-move: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.25'%3E%3Cpath d='M12 3v18M3 12h18'/%3E%3Cpath d='M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.75'%3E%3Cpath d='M12 3v18M3 12h18'/%3E%3Cpath d='M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5'/%3E%3C/g%3E%3C/svg%3E") 12 12, move;
+  --cursor-cross: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.25'%3E%3Cpath d='M12 3v18M3 12h18'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.75'%3E%3Cpath d='M12 3v18M3 12h18'/%3E%3C/g%3E%3C/svg%3E") 12 12, crosshair;
+  --cursor-rotate: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.5'%3E%3Cpath d='M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6'/%3E%3Cpolyline points='21 3 21 9 15 9'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.85'%3E%3Cpath d='M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6'/%3E%3Cpolyline points='21 3 21 9 15 9'/%3E%3C/g%3E%3C/svg%3E") 12 12, grab;
+  --cursor-ns: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.25'%3E%3Cpath d='M12 4v16'/%3E%3Cpath d='M12 4l-3 3M12 4l3 3M12 20l-3-3M12 20l3-3'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.75'%3E%3Cpath d='M12 4v16'/%3E%3Cpath d='M12 4l-3 3M12 4l3 3M12 20l-3-3M12 20l3-3'/%3E%3C/g%3E%3C/svg%3E") 12 12, ns-resize;
+  --cursor-ew: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.25'%3E%3Cpath d='M4 12h16'/%3E%3Cpath d='M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.75'%3E%3Cpath d='M4 12h16'/%3E%3Cpath d='M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3'/%3E%3C/g%3E%3C/svg%3E") 12 12, ew-resize;
+  --cursor-nwse: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.25'%3E%3Cpath d='M6 6l12 12'/%3E%3Cpath d='M6 6h5M6 6v5M18 18h-5M18 18v-5'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.75'%3E%3Cpath d='M6 6l12 12'/%3E%3Cpath d='M6 6h5M6 6v5M18 18h-5M18 18v-5'/%3E%3C/g%3E%3C/svg%3E") 12 12, nwse-resize;
+  --cursor-nesw: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23f8fafc' stroke-width='3.25'%3E%3Cpath d='M18 6L6 18'/%3E%3Cpath d='M18 6h-5M18 6v5M6 18h5M6 18v-5'/%3E%3C/g%3E%3Cg stroke='%23111111' stroke-width='1.75'%3E%3Cpath d='M18 6L6 18'/%3E%3Cpath d='M18 6h-5M18 6v5M6 18h5M6 18v-5'/%3E%3C/g%3E%3C/svg%3E") 12 12, nesw-resize;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--text);
   line-height: 1.4;
@@ -318,6 +328,21 @@ button {
   line-height: 1.7;
   pointer-events: none;
   padding: 12px;
+}
+
+.selection-marquee {
+  position: absolute;
+  z-index: 50;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: var(--ui-stroke) dashed var(--accent);
+  background: rgba(255, 122, 26, 0.12);
+}
+
+body.marquee-selecting,
+body.marquee-selecting * {
+  cursor: var(--cursor-cross) !important;
+  user-select: none !important;
 }
 
 /* Home */
@@ -1499,10 +1524,17 @@ button {
   position: absolute;
   user-select: none;
   overflow: visible;
+  cursor: var(--cursor-move);
+}
+
+.element.is-locked {
+  cursor: not-allowed;
 }
 
 .element.selected {
   z-index: 10;
+  outline: var(--ui-stroke) solid var(--accent);
+  outline-offset: 0;
 }
 
 .element-handles {
@@ -1539,22 +1571,20 @@ button {
   inset: calc(-1 * var(--ui-handle-pad));
 }
 
-.handle.nw { left: calc(-1 * var(--ui-handle-offset)); top: calc(-1 * var(--ui-handle-offset)); cursor: nwse-resize; }
-.handle.n { left: calc(50% - var(--ui-handle-offset)); top: calc(-1 * var(--ui-handle-offset)); cursor: ns-resize; }
-.handle.ne { right: calc(-1 * var(--ui-handle-offset)); top: calc(-1 * var(--ui-handle-offset)); cursor: nesw-resize; }
-.handle.e { right: calc(-1 * var(--ui-handle-offset)); top: calc(50% - var(--ui-handle-offset)); cursor: ew-resize; }
-.handle.se { right: calc(-1 * var(--ui-handle-offset)); bottom: calc(-1 * var(--ui-handle-offset)); cursor: nwse-resize; }
-.handle.s { left: calc(50% - var(--ui-handle-offset)); bottom: calc(-1 * var(--ui-handle-offset)); cursor: ns-resize; }
-.handle.sw { left: calc(-1 * var(--ui-handle-offset)); bottom: calc(-1 * var(--ui-handle-offset)); cursor: nesw-resize; }
-.handle.w { left: calc(-1 * var(--ui-handle-offset)); top: calc(50% - var(--ui-handle-offset)); cursor: ew-resize; }
+.handle.nw { left: calc(-1 * var(--ui-handle-offset)); top: calc(-1 * var(--ui-handle-offset)); cursor: var(--cursor-nwse); }
+.handle.n { left: calc(50% - var(--ui-handle-offset)); top: calc(-1 * var(--ui-handle-offset)); cursor: var(--cursor-ns); }
+.handle.ne { right: calc(-1 * var(--ui-handle-offset)); top: calc(-1 * var(--ui-handle-offset)); cursor: var(--cursor-nesw); }
+.handle.e { right: calc(-1 * var(--ui-handle-offset)); top: calc(50% - var(--ui-handle-offset)); cursor: var(--cursor-ew); }
+.handle.se { right: calc(-1 * var(--ui-handle-offset)); bottom: calc(-1 * var(--ui-handle-offset)); cursor: var(--cursor-nwse); }
+.handle.s { left: calc(50% - var(--ui-handle-offset)); bottom: calc(-1 * var(--ui-handle-offset)); cursor: var(--cursor-ns); }
+.handle.sw { left: calc(-1 * var(--ui-handle-offset)); bottom: calc(-1 * var(--ui-handle-offset)); cursor: var(--cursor-nesw); }
+.handle.w { left: calc(-1 * var(--ui-handle-offset)); top: calc(50% - var(--ui-handle-offset)); cursor: var(--cursor-ew); }
 
 .handle.rotate-end {
   border-radius: 50%;
   background: var(--accent);
   border-color: var(--accent);
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6'/%3E%3Cpolyline points='21 3 21 9 15 9'/%3E%3C/svg%3E") 12 12,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6'/%3E%3Cpolyline points='21 3 21 9 15 9'/%3E%3C/svg%3E") 12 12,
-    grab;
+  cursor: var(--cursor-rotate);
 }
 
 .handle.rotate-end.rotate-w {
@@ -1567,10 +1597,10 @@ button {
   top: calc(50% - var(--ui-handle-offset));
 }
 
-.handle.rotate-end:active {
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6'/%3E%3Cpolyline points='21 3 21 9 15 9'/%3E%3C/svg%3E") 12 12,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6'/%3E%3Cpolyline points='21 3 21 9 15 9'/%3E%3C/svg%3E") 12 12,
-    grabbing;
+.handle.rotate-end:active,
+body.element-rotating,
+body.element-rotating * {
+  cursor: var(--cursor-rotate) !important;
 }
 
 .panel-btn {
@@ -1726,17 +1756,17 @@ button {
 
 .table-wrap.grid-cursor-col,
 .table-wrap.grid-cursor-col * {
-  cursor: col-resize !important;
+  cursor: var(--cursor-col) !important;
 }
 
 .table-wrap.grid-cursor-row,
 .table-wrap.grid-cursor-row * {
-  cursor: row-resize !important;
+  cursor: var(--cursor-row) !important;
 }
 
 .table-wrap.grid-cursor-move,
 .table-wrap.grid-cursor-move * {
-  cursor: move !important;
+  cursor: var(--cursor-move) !important;
 }
 
 .table-col-resizer {
@@ -1837,17 +1867,17 @@ body.table-grid-resizing {
 
 body.table-grid-resizing-col,
 body.table-grid-resizing-col * {
-  cursor: col-resize !important;
+  cursor: var(--cursor-col) !important;
 }
 
 body.table-grid-resizing-row,
 body.table-grid-resizing-row * {
-  cursor: row-resize !important;
+  cursor: var(--cursor-row) !important;
 }
 
 body.table-moving,
 body.table-moving * {
-  cursor: move !important;
+  cursor: var(--cursor-move) !important;
 }
 
 .table-el {
@@ -1866,7 +1896,7 @@ body.table-moving * {
 
 .table-el .table-cell {
   overflow: hidden;
-  cursor: cell;
+  cursor: var(--cursor-cross);
   word-break: break-word;
 }
 

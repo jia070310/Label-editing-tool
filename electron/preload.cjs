@@ -15,4 +15,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSystemFonts: () => ipcRenderer.invoke('get-system-fonts'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  translateText: (text) => ipcRenderer.invoke('translate-text', text),
 })

@@ -959,6 +959,76 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('translate-text', async (_event, text) => {
+    const q = String(text || '').trim()
+    if (!q) return { ok: false, error: 'empty' }
+
+    const fetchJson = async (url, timeoutMs = 10000) => {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+      try {
+        const res = await fetch(url, { signal: ctrl.signal })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return await res.json()
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+
+    try {
+      const gUrl =
+        'https://translate.googleapis.com/translate_a/single?' +
+        new URLSearchParams({
+          client: 'gtx',
+          sl: 'zh-CN',
+          tl: 'en',
+          dt: 't',
+          q,
+        })
+      const data = await fetchJson(gUrl)
+      if (Array.isArray(data) && Array.isArray(data[0])) {
+        const parts = []
+        for (const chunk of data[0]) {
+          if (Array.isArray(chunk) && typeof chunk[0] === 'string') {
+            parts.push(chunk[0])
+          }
+        }
+        const translated = parts.join('').trim()
+        if (translated) {
+          return { ok: true, text: translated, provider: 'google' }
+        }
+      }
+      throw new Error('google empty')
+    } catch (gErr) {
+      try {
+        const mUrl =
+          'https://api.mymemory.translated.net/get?' +
+          new URLSearchParams({ q, langpair: 'zh-CN|en' })
+        const data = await fetchJson(mUrl, 12000)
+        if (data?.responseStatus === 200) {
+          const translated = String(
+            data.responseData?.translatedText || '',
+          ).trim()
+          if (translated) {
+            return { ok: true, text: translated, provider: 'mymemory' }
+          }
+        }
+        return {
+          ok: false,
+          error: data?.responseDetails || 'mymemory failed',
+        }
+      } catch (mErr) {
+        return {
+          ok: false,
+          error:
+            (gErr instanceof Error ? gErr.message : String(gErr)) +
+            ' / ' +
+            (mErr instanceof Error ? mErr.message : String(mErr)),
+        }
+      }
+    }
+  })
+
   ipcMain.handle('open-text-file', async (_event, payload = {}) => {
     const { canceled, filePaths } = await dialog.showOpenDialog(
       mainWindow || undefined,

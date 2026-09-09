@@ -13,7 +13,7 @@ import {
   printBatchLabels,
 } from '../utils/renderLabel'
 import { isElectronApp } from '../utils/electron'
-import { translateZhToEn } from '../utils/translate'
+import { translateZhToEn, mapPool } from '../utils/translate'
 import {
   buildRowSources,
   collectUniqueSources,
@@ -208,53 +208,48 @@ export function BatchPrintDialog({
     setTranslating(true)
 
     ;(async () => {
-      let done = 0
-      for (const source of sources) {
-        if (cancelled || translateGenRef.current !== gen) return
-        try {
-          const en = await translateZhToEn(source)
+      await mapPool(
+        sources,
+        4,
+        async (source) => {
           if (cancelled || translateGenRef.current !== gen) return
-          liveCacheRef.current[source] = en
-          failedRef.current.delete(source)
-        } catch {
+          try {
+            const en = await translateZhToEn(source)
+            if (cancelled || translateGenRef.current !== gen) return
+            liveCacheRef.current[source] = en
+            failedRef.current.delete(source)
+          } catch {
+            if (cancelled || translateGenRef.current !== gen) return
+            failedRef.current.add(source)
+          }
+        },
+        (done) => {
           if (cancelled || translateGenRef.current !== gen) return
-          failedRef.current.add(source)
-        }
-        done += 1
-        scheduleProgress(done, sources.length)
-        scheduleUiFlush()
+          scheduleProgress(done, sources.length)
+          scheduleUiFlush()
 
-        // 当前预览行译完 → 立刻刷新一次 UI + 触发预览
-        const idx = Math.min(previewIndexRef.current, rows.length - 1)
-        const previewSrcs = rowSources[idx] ?? []
-        const readyKey = `${gen}:${idx}`
-        if (
-          previewReadyKeyRef.current !== readyKey &&
-          previewSrcs.length > 0 &&
-          rowStatusFromSources(
-            previewSrcs,
-            liveCacheRef.current,
-            failedRef.current,
-          ) === 'ready'
-        ) {
-          previewReadyKeyRef.current = readyKey
-          if (flushTimerRef.current != null) {
-            window.clearTimeout(flushTimerRef.current)
-            flushTimerRef.current = null
+          const idx = Math.min(previewIndexRef.current, rows.length - 1)
+          const previewSrcs = rowSources[idx] ?? []
+          const readyKey = `${gen}:${idx}`
+          if (
+            previewReadyKeyRef.current !== readyKey &&
+            previewSrcs.length > 0 &&
+            rowStatusFromSources(
+              previewSrcs,
+              liveCacheRef.current,
+              failedRef.current,
+            ) === 'ready'
+          ) {
+            previewReadyKeyRef.current = readyKey
+            if (flushTimerRef.current != null) {
+              window.clearTimeout(flushTimerRef.current)
+              flushTimerRef.current = null
+            }
+            publishUiFromLive()
+            setPreviewReadyTick((n) => n + 1)
           }
-          publishUiFromLive()
-          setPreviewReadyTick((n) => n + 1)
-        }
-
-        // 让出主线程，避免卡 UI
-        await new Promise<void>((r) => {
-          if (typeof requestIdleCallback === 'function') {
-            requestIdleCallback(() => r(), { timeout: 120 })
-          } else {
-            setTimeout(r, 40)
-          }
-        })
-      }
+        },
+      )
 
       if (!cancelled && translateGenRef.current === gen) {
         if (flushTimerRef.current != null) {

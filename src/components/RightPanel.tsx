@@ -96,12 +96,12 @@ export function RightPanel({
                 选中表格后，拖动内部竖线 / 横线调整列宽、行高
               </li>
               <li>
-                <kbd>Alt</kbd> + 拖动：移动对齐的一段线（左右/上下对调，外框不变）
+                <kbd>Alt</kbd> + 拖动：改变该段尺寸，表格外框随之变化
               </li>
               <li>
                 <kbd>Alt</kbd> + <kbd>Q</kbd> + 拖动：只移动当前这一小段
               </li>
-              <li>普通拖动：改变该段尺寸，表格外框会随之变化</li>
+              <li>普通拖动：邻格对调宽高，外框尺寸不变</li>
             </ul>
           </div>
           <div className="panel-section">
@@ -190,10 +190,10 @@ export function RightPanel({
             <h4>分隔线拖动</h4>
             <ul className="panel-help-list">
               <li>
-                <strong>普通拖动</strong>：调整列宽 / 行高，表格外框随之变化
+                <strong>普通拖动</strong>：邻格对调列宽 / 行高，外框尺寸不变
               </li>
               <li>
-                <kbd>Alt</kbd> + 拖动：移动当前对齐的一整段线，邻格对调宽度/高度，外框尺寸不变
+                <kbd>Alt</kbd> + 拖动：调整列宽 / 行高，表格外框随之变化
               </li>
               <li>
                 <kbd>Alt</kbd> + <kbd>Q</kbd> + 拖动：只挪当前一小段，不影响其它已错位的段

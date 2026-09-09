@@ -39,6 +39,10 @@ export interface ElectronPrintAPI {
   getSystemFonts?: () => Promise<string[]>
   getAppVersion?: () => Promise<string>
   openExternal?: (url: string) => Promise<{ ok: boolean; error?: string }>
+  /** 中文→英文；主进程代理，带缓存前的远端请求 */
+  translateText?: (
+    text: string,
+  ) => Promise<{ ok: boolean; text?: string; error?: string; provider?: string }>
 }
 
 export function isElectronApp(): boolean {

@@ -76,6 +76,7 @@ import {
   pickSourceText,
   removeTranslationFromCell,
   cellHasTranslation,
+  mapPool,
   translateZhToEn,
 } from './utils/translate'
 import { variableToken, shouldReplaceWithVariableOnly } from './utils/variables'
@@ -120,6 +121,18 @@ type DragMode =
       origRotation: number
       pendingRotation: number
     }
+  | {
+      kind: 'marquee'
+      originClientX: number
+      originClientY: number
+      lastClientX: number
+      lastClientY: number
+      /** 框选层用 sheet 内 CSS px */
+      x: number
+      y: number
+      w: number
+      h: number
+    }
 
 function getElementNode(id: string): HTMLElement | null {
   return document.querySelector(
@@ -148,6 +161,152 @@ function paintElementBox(
     node.style.transform =
       box.rotation === 0 ? '' : `rotate(${box.rotation}deg)`
   }
+}
+
+/** 屏幕坐标 → 标签 sheet 内未缩放 CSS 像素 */
+function clientToSheetPx(
+  sheet: HTMLElement,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } {
+  const rect = sheet.getBoundingClientRect()
+  const w = sheet.offsetWidth || rect.width
+  const h = sheet.offsetHeight || rect.height
+  if (rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 }
+  return {
+    x: ((clientX - rect.left) / rect.width) * w,
+    y: ((clientY - rect.top) / rect.height) * h,
+  }
+}
+
+function normalizeRect(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): { x: number; y: number; w: number; h: number } {
+  const x = Math.min(x0, x1)
+  const y = Math.min(y0, y1)
+  return { x, y, w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) }
+}
+
+function rectsIntersect(
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number },
+): boolean {
+  return !(
+    a.right < b.left ||
+    a.left > b.right ||
+    a.bottom < b.top ||
+    a.top > b.bottom
+  )
+}
+
+/** 框选：非表格按元素相交；表格按单元格相交（拖到哪格选哪格） */
+function collectMarqueeSelection(
+  sheet: HTMLElement,
+  originClientX: number,
+  originClientY: number,
+  clientX: number,
+  clientY: number,
+): { ids: string[]; cells: CellPos[] } {
+  const left = Math.min(originClientX, clientX)
+  const top = Math.min(originClientY, clientY)
+  const right = Math.max(originClientX, clientX)
+  const bottom = Math.max(originClientY, clientY)
+  if (right - left < 3 && bottom - top < 3) {
+    return { ids: [], cells: [] }
+  }
+
+  const box = { left, top, right, bottom }
+
+  // 1) 表格：只收集与选框相交的单元格
+  const cellsByTable = new Map<string, CellPos[]>()
+  sheet
+    .querySelectorAll<HTMLElement>('.table-cell[data-row][data-col]')
+    .forEach((node) => {
+      const host = node.closest('[data-element-id]') as HTMLElement | null
+      const id = host?.dataset.elementId
+      if (!id) return
+      const r = node.getBoundingClientRect()
+      if (
+        !rectsIntersect(box, {
+          left: r.left,
+          top: r.top,
+          right: r.right,
+          bottom: r.bottom,
+        })
+      ) {
+        return
+      }
+      const row = Number(node.dataset.row)
+      const col = Number(node.dataset.col)
+      if (!Number.isFinite(row) || !Number.isFinite(col)) return
+      const list = cellsByTable.get(id) ?? []
+      list.push({ row, col })
+      cellsByTable.set(id, list)
+    })
+
+  // 选中格最多的表作为当前表（右侧面板 / 单元格高亮挂在 selectedIds[0]）
+  let primaryTableId: string | null = null
+  let primaryCells: CellPos[] = []
+  for (const [id, list] of cellsByTable) {
+    if (list.length > primaryCells.length) {
+      primaryTableId = id
+      primaryCells = list
+    }
+  }
+
+  // 2) 非表格元素：整体相交即选中
+  const otherIds: string[] = []
+  sheet.querySelectorAll<HTMLElement>('[data-element-id]').forEach((node) => {
+    const id = node.dataset.elementId
+    if (!id) return
+    if (cellsByTable.has(id)) return
+    if (node.querySelector('.table-cell')) return
+    const r = node.getBoundingClientRect()
+    if (
+      rectsIntersect(box, {
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+      })
+    ) {
+      otherIds.push(id)
+    }
+  })
+
+  const ids = primaryTableId
+    ? [primaryTableId, ...otherIds]
+    : otherIds
+
+  return { ids, cells: primaryCells }
+}
+
+/** 表格内全部可选单元格（跳过合并覆盖格） */
+function allTableCells(table: TableElement): CellPos[] {
+  const cells: CellPos[] = []
+  for (let row = 0; row < table.rows; row++) {
+    for (let col = 0; col < table.cols; col++) {
+      const cell = table.cells[row]?.[col]
+      if (!cell || cell.covered) continue
+      cells.push({ row, col })
+    }
+  }
+  return cells
+}
+
+/** 工具栏全选：若首个是表格则全选其单元格 */
+function selectionCellsForIds(
+  ids: string[],
+  elements: LabelElement[],
+): CellPos[] {
+  const firstId = ids[0]
+  if (!firstId) return []
+  const el = elements.find((e) => e.id === firstId)
+  if (!el || el.type !== 'table') return []
+  return allTableCells(el as TableElement)
 }
 
 function createElement(
@@ -306,7 +465,14 @@ export default function App() {
   const [translating, setTranslating] = useState(false)
   const [zoom, setZoom] = useState(2)
   const [clipboard, setClipboard] = useState<LabelElement | null>(null)
+  const [marquee, setMarquee] = useState<{
+    x: number
+    y: number
+    w: number
+    h: number
+  } | null>(null)
   const dragRef = useRef<DragMode | null>(null)
+  const sheetRef = useRef<HTMLDivElement>(null)
   const liveCellContentRef = useRef('')
   const emptyCells = useMemo(() => [] as CellPos[], [])
 
@@ -686,6 +852,7 @@ export default function App() {
       origRotation: el.rotation,
       pendingRotation: el.rotation,
     }
+    document.body.classList.add('element-rotating')
   }, [])
 
   const zoomRef = useRef(zoom)
@@ -713,6 +880,35 @@ export default function App() {
           current.pendingX = x
           current.pendingY = y
           paintElementBox(current.id, { x, y })
+          return
+        }
+
+        if (current.kind === 'marquee') {
+          const sheet = sheetRef.current
+          if (!sheet) return
+          current.lastClientX = clientX
+          current.lastClientY = clientY
+          const pt = clientToSheetPx(sheet, clientX, clientY)
+          const origin = clientToSheetPx(
+            sheet,
+            current.originClientX,
+            current.originClientY,
+          )
+          const box = normalizeRect(origin.x, origin.y, pt.x, pt.y)
+          current.x = box.x
+          current.y = box.y
+          current.w = box.w
+          current.h = box.h
+          setMarquee(box)
+          const hits = collectMarqueeSelection(
+            sheet,
+            current.originClientX,
+            current.originClientY,
+            clientX,
+            clientY,
+          )
+          setSelectedIds(hits.ids)
+          setSelectedCells(hits.cells)
           return
         }
 
@@ -765,8 +961,32 @@ export default function App() {
       }
       const current = dragRef.current
       dragRef.current = null
-      document.body.classList.remove('table-moving')
+      document.body.classList.remove(
+        'table-moving',
+        'element-rotating',
+        'marquee-selecting',
+      )
       if (!current) return
+
+      if (current.kind === 'marquee') {
+        setMarquee(null)
+        const sheet = sheetRef.current
+        if (!sheet || (current.w < 3 && current.h < 3)) {
+          setSelectedIds([])
+          setSelectedCells([])
+          return
+        }
+        const hits = collectMarqueeSelection(
+          sheet,
+          current.originClientX,
+          current.originClientY,
+          current.lastClientX,
+          current.lastClientY,
+        )
+        setSelectedIds(hits.ids)
+        setSelectedCells(hits.cells)
+        return
+      }
 
       if (current.kind === 'move') {
         if (
@@ -1326,19 +1546,18 @@ export default function App() {
       let failCount = 0
       let lastError = ''
 
-      for (let i = 0; i < targets.length; i++) {
-        const t = targets[i]
+      const results = await mapPool(targets, 4, async (t) => {
         const sourceText = pickSourceText(
           t.content,
           targets.length === 1 ? selection : '',
         )
         if (!sourceText || !hasChinese(sourceText)) {
-          skipped++
-          continue
+          return { kind: 'skip' as const }
         }
         try {
           const translated = await translateZhToEn(sourceText)
-          updates.push({
+          return {
+            kind: 'ok' as const,
             row: t.row,
             col: t.col,
             content: mergeTranslationIntoCell(
@@ -1346,13 +1565,22 @@ export default function App() {
               sourceText,
               translated,
             ),
-          })
-          if (i < targets.length - 1) {
-            await new Promise((r) => setTimeout(r, 180))
           }
         } catch (err) {
+          return {
+            kind: 'fail' as const,
+            error: err instanceof Error ? err.message : '翻译失败',
+          }
+        }
+      })
+
+      for (const r of results) {
+        if (r.kind === 'skip') skipped++
+        else if (r.kind === 'fail') {
           failCount++
-          lastError = err instanceof Error ? err.message : '翻译失败'
+          lastError = r.error
+        } else {
+          updates.push({ row: r.row, col: r.col, content: r.content })
         }
       }
 
@@ -1660,7 +1888,12 @@ export default function App() {
         onDelete={deleteSelected}
         onCopy={copySelected}
         onPaste={pasteClipboard}
-        onSelectAll={() => setSelectedIds(elements.map((e) => e.id))}
+        onSelectAll={() => {
+          const ids = elements.map((e) => e.id)
+          setSelectedIds(ids)
+          setSelectedCells(selectionCellsForIds(ids, elements))
+          setEditingCell(null)
+        }}
         onRotate={() => {
           if (selected && canRotateElement(selected))
             patchElement(selected.id, rotateElementBy90(selected))
@@ -1726,6 +1959,7 @@ export default function App() {
                 }}
               >
                 <div
+                  ref={sheetRef}
                   className="label-sheet"
                   style={{
                     width: mmToPx(settings.width),
@@ -1733,10 +1967,28 @@ export default function App() {
                     borderRadius: sheetRadius,
                   }}
                   onMouseDown={(e) => {
-                    if (e.target !== e.currentTarget) return
+                    if (e.button !== 0) return
+                    const t = e.target as HTMLElement
+                    // 点在元素/手柄上不框选；其余空白（含 sheet 自身）可拖选
+                    if (t.closest('[data-element-id], .handle, button, input'))
+                      return
+                    e.preventDefault()
                     flushEditingCell()
-                    setSelectedIds([])
                     setSelectedCells([])
+                    const sheet = e.currentTarget
+                    const pt = clientToSheetPx(sheet, e.clientX, e.clientY)
+                    const box = { x: pt.x, y: pt.y, w: 0, h: 0 }
+                    dragRef.current = {
+                      kind: 'marquee',
+                      originClientX: e.clientX,
+                      originClientY: e.clientY,
+                      lastClientX: e.clientX,
+                      lastClientY: e.clientY,
+                      ...box,
+                    }
+                    setMarquee(box)
+                    setSelectedIds([])
+                    document.body.classList.add('marquee-selecting')
                   }}
                 >
                   {elements.length === 0 && (
@@ -1745,6 +1997,17 @@ export default function App() {
                       <br />
                       从左侧添加工具开始设计
                     </div>
+                  )}
+                  {marquee && (marquee.w > 2 || marquee.h > 2) && (
+                    <div
+                      className="selection-marquee"
+                      style={{
+                        left: marquee.x,
+                        top: marquee.y,
+                        width: marquee.w,
+                        height: marquee.h,
+                      }}
+                    />
                   )}
                   {elements.map((el, index) => (
                     <ElementView

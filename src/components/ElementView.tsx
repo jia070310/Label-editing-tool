@@ -190,7 +190,6 @@ export const ElementView = memo(function ElementView(props: Props) {
       element.type === 'rect' || element.type === 'line'
         ? 'center center'
         : undefined,
-    cursor: element.locked ? 'not-allowed' : 'move',
     zIndex: selected ? zIndex + 1000 : zIndex,
   }
 
@@ -201,7 +200,7 @@ export const ElementView = memo(function ElementView(props: Props) {
 
   return (
     <div
-      className={`element ${selected ? 'selected' : ''}`}
+      className={`element ${selected ? 'selected' : ''} ${element.locked ? 'is-locked' : ''}`}
       data-element-id={element.id}
       style={style}
       onMouseDown={handleMouseDown}
