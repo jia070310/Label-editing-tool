@@ -7,6 +7,7 @@ export interface ElectronPrintAPI {
     widthMm: number
     heightMm: number
     dpi?: number
+    copies?: number
     deviceName?: string
     silent?: boolean
   }) => Promise<{ ok: boolean; cancelled?: boolean; logPath?: string }>

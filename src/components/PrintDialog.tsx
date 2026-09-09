@@ -27,12 +27,19 @@ export function PrintDialog({ open, sheet, settings, onClose }: Props) {
   const [printing, setPrinting] = useState(false)
   const [error, setError] = useState('')
   const [dpi, setDpi] = useState(DEFAULT_PRINT_DPI)
+  const [copies, setCopies] = useState(1)
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const [deviceName, setDeviceName] = useState('')
   const desktop = isElectronApp()
 
   const pxW = Math.round((settings.width / 25.4) * dpi)
   const pxH = Math.round((settings.height / 25.4) * dpi)
+
+  useEffect(() => {
+    if (!open) return
+    setCopies(1)
+    setError('')
+  }, [open])
 
   useEffect(() => {
     if (!open || !desktop) return
@@ -79,6 +86,7 @@ export function PrintDialog({ open, sheet, settings, onClose }: Props) {
     try {
       await printLabelImage(preview, settings, {
         dpi,
+        copies,
         deviceName: deviceName || undefined,
         silent: false,
       })
@@ -86,7 +94,12 @@ export function PrintDialog({ open, sheet, settings, onClose }: Props) {
       const msg = e instanceof Error ? e.message : '唤起打印失败，请重试'
       setError(msg)
       void import('../utils/feedback').then(({ reportClientError }) =>
-        reportClientError(e, { kind: 'print-dialog', deviceName, dpi }),
+        reportClientError(e, {
+          kind: 'print-dialog',
+          deviceName,
+          dpi,
+          copies,
+        }),
       )
     } finally {
       setPrinting(false)
@@ -144,6 +157,25 @@ export function PrintDialog({ open, sheet, settings, onClose }: Props) {
                 <option value={300}>300</option>
                 <option value={600}>600</option>
               </select>
+            </div>
+            <div className="print-option-row">
+              <label htmlFor="print-copies">打印份数</label>
+              <input
+                id="print-copies"
+                type="number"
+                min={1}
+                max={999}
+                step={1}
+                value={copies}
+                onChange={(e) => {
+                  const n = Math.floor(Number(e.target.value))
+                  if (!Number.isFinite(n)) {
+                    setCopies(1)
+                    return
+                  }
+                  setCopies(Math.min(999, Math.max(1, n)))
+                }}
+              />
             </div>
             {desktop && printers.length > 0 && (
               <div className="print-option-row">

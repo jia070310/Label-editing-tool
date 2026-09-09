@@ -1075,7 +1075,8 @@ body.marquee-selecting * {
   color: var(--text-muted);
 }
 
-.print-option-row select {
+.print-option-row select,
+.print-option-row input[type='number'] {
   height: 32px;
   border: 1px solid var(--border);
   border-radius: 6px;

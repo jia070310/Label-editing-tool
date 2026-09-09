@@ -3,6 +3,7 @@ param(
   [Parameter(Mandatory=$true)][string]$PrinterName,
   [Parameter(Mandatory=$true)][double]$WidthMm,
   [Parameter(Mandatory=$true)][double]$HeightMm,
+  [int]$Copies = 1,
   [string]$LogPath = ""
 )
 
@@ -16,12 +17,15 @@ function Write-PrintLog([string]$Message) {
 
 Add-Type -AssemblyName System.Drawing
 
+if ($Copies -lt 1) { $Copies = 1 }
+if ($Copies -gt 999) { $Copies = 999 }
+
 $wHundredths = [int][Math]::Round($WidthMm / 25.4 * 100)
 $hHundredths = [int][Math]::Round($HeightMm / 25.4 * 100)
 if ($wHundredths -lt 1) { $wHundredths = 1 }
 if ($hHundredths -lt 1) { $hHundredths = 1 }
 
-Write-PrintLog "start printer='$PrinterName' sizeMm=${WidthMm}x${HeightMm} hundredths=${wHundredths}x${hHundredths}"
+Write-PrintLog "start printer='$PrinterName' sizeMm=${WidthMm}x${HeightMm} hundredths=${wHundredths}x${hHundredths} copies=$Copies"
 Write-PrintLog "image='$ImagePath' exists=$([IO.File]::Exists($ImagePath))"
 
 $img = $null
@@ -63,7 +67,7 @@ try {
   $doc.DefaultPageSettings.Landscape = $false
   $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
   $doc.OriginAtMargins = $false
-  $doc.PrinterSettings.Copies = 1
+  $doc.PrinterSettings.Copies = [int16]$Copies
   try { $doc.PrinterSettings.Collate = $false } catch {}
   $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
 

@@ -243,8 +243,15 @@ function rotateCanvas(source: HTMLCanvasElement, deg: number): HTMLCanvasElement
 
 export interface PrintOptions {
   dpi?: number
+  copies?: number
   deviceName?: string
   silent?: boolean
+}
+
+function normalizeCopies(copies?: number): number {
+  const n = Math.floor(Number(copies))
+  if (!Number.isFinite(n) || n < 1) return 1
+  return Math.min(999, n)
 }
 
 async function printViaElectron(
@@ -258,6 +265,7 @@ async function printViaElectron(
     widthMm,
     heightMm,
     dpi: options.dpi ?? DEFAULT_PRINT_DPI,
+    copies: normalizeCopies(options.copies),
     deviceName: options.deviceName ?? '',
     silent: options.silent ?? false,
   })
@@ -267,8 +275,14 @@ async function printViaElectron(
 function printViaBrowserIframe(
   dataUrl: string,
   settings: LabelSettings,
+  copies = 1,
 ): Promise<void> {
   const { widthMm: pageW, heightMm: pageH } = getPrintPageSize(settings)
+  const count = normalizeCopies(copies)
+  const pages = Array.from({ length: count }, (_, i) => {
+    const last = i === count - 1
+    return `<img class="${last ? '' : 'page'}" src="${dataUrl}" />`
+  }).join('')
 
   return new Promise((resolve, reject) => {
     const iframe = document.createElement('iframe')
@@ -299,12 +313,13 @@ function printViaBrowserIframe(
     doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
 <style>
 @page{size:${pageW}mm ${pageH}mm;margin:0}
-html,body{margin:0;padding:0;width:${pageW}mm;height:${pageH}mm;overflow:hidden;background:#fff}
+html,body{margin:0;padding:0;background:#fff}
 img{display:block;width:${pageW}mm;height:${pageH}mm;object-fit:fill}
-</style></head><body><img id="label" src="${dataUrl}" /></body></html>`)
+img.page{page-break-after:always}
+</style></head><body>${pages}</body></html>`)
     doc.close()
 
-    const img = doc.getElementById('label') as HTMLImageElement | null
+    const imgs = Array.from(doc.images)
     const trigger = () => {
       try {
         win.focus()
@@ -317,20 +332,32 @@ img{display:block;width:${pageW}mm;height:${pageH}mm;object-fit:fill}
       setTimeout(cleanup, 5000)
     }
 
-    if (!img) {
+    if (imgs.length === 0) {
       cleanup()
       reject(new Error('打印内容加载失败'))
       return
     }
-    if (img.complete && img.naturalWidth > 0) setTimeout(trigger, 100)
-    else {
-      img.onload = () => setTimeout(trigger, 80)
-      img.onerror = () => {
-        cleanup()
-        reject(new Error('标签图像加载失败'))
-      }
-      setTimeout(trigger, 1500)
+
+    let pending = imgs.length
+    let failed = false
+    const onReady = () => {
+      pending -= 1
+      if (pending <= 0 && !failed) setTimeout(trigger, 100)
     }
+    imgs.forEach((img) => {
+      if (img.complete && img.naturalWidth > 0) onReady()
+      else {
+        img.onload = onReady
+        img.onerror = () => {
+          failed = true
+          cleanup()
+          reject(new Error('标签图像加载失败'))
+        }
+      }
+    })
+    setTimeout(() => {
+      if (!done && !failed) trigger()
+    }, 1500)
   })
 }
 
@@ -343,7 +370,7 @@ export async function printLabelImage(
     await printViaElectron(dataUrl, settings, options)
     return
   }
-  await printViaBrowserIframe(dataUrl, settings)
+  await printViaBrowserIframe(dataUrl, settings, options.copies)
 }
 
 export async function printLabelSheet(

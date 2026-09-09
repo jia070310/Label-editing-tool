@@ -381,6 +381,7 @@ param(
   [Parameter(Mandatory=$true)][string]$PrinterName,
   [Parameter(Mandatory=$true)][double]$WidthMm,
   [Parameter(Mandatory=$true)][double]$HeightMm,
+  [int]$Copies = 1,
   [string]$LogPath = ""
 )
 
@@ -394,12 +395,15 @@ function Write-PrintLog([string]$Message) {
 
 Add-Type -AssemblyName System.Drawing
 
+if ($Copies -lt 1) { $Copies = 1 }
+if ($Copies -gt 999) { $Copies = 999 }
+
 $wHundredths = [int][Math]::Round($WidthMm / 25.4 * 100)
 $hHundredths = [int][Math]::Round($HeightMm / 25.4 * 100)
 if ($wHundredths -lt 1) { $wHundredths = 1 }
 if ($hHundredths -lt 1) { $hHundredths = 1 }
 
-Write-PrintLog ("start printer='{0}' sizeMm={1}x{2} hundredths={3}x{4}" -f $PrinterName, $WidthMm, $HeightMm, $wHundredths, $hHundredths)
+Write-PrintLog ("start printer='{0}' sizeMm={1}x{2} hundredths={3}x{4} copies={5}" -f $PrinterName, $WidthMm, $HeightMm, $wHundredths, $hHundredths, $Copies)
 Write-PrintLog "image='$ImagePath' exists=$([IO.File]::Exists($ImagePath))"
 
 $img = $null
@@ -441,7 +445,7 @@ try {
   $doc.DefaultPageSettings.Landscape = $false
   $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
   $doc.OriginAtMargins = $false
-  $doc.PrinterSettings.Copies = 1
+  $doc.PrinterSettings.Copies = [int16]$Copies
   try { $doc.PrinterSettings.Collate = $false } catch {}
   $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
 
@@ -613,12 +617,13 @@ function writeUtf8BomFile(filePath, content) {
   fs.writeFileSync(filePath, `\uFEFF${content}`, 'utf8')
 }
 
-function runPowershellPrint(imagePath, printerName, widthMm, heightMm) {
+function runPowershellPrint(imagePath, printerName, widthMm, heightMm, copies = 1) {
   const tmpDir = getPrintWorkDir()
   const logPath = getPrintLogPath()
   // 写到纯 ASCII 临时路径，避免中文项目路径导致 PS 解析失败
   const scriptPath = path.join(tmpDir, 'print-label-run.ps1')
   writeUtf8BomFile(scriptPath, PRINT_PS1)
+  const copyCount = Math.min(999, Math.max(1, Math.floor(Number(copies)) || 1))
 
   appendPrintLog('spawn powershell', {
     scriptPath,
@@ -626,6 +631,7 @@ function runPowershellPrint(imagePath, printerName, widthMm, heightMm) {
     printerName,
     widthMm,
     heightMm,
+    copies: copyCount,
     logPath,
   })
 
@@ -646,6 +652,8 @@ function runPowershellPrint(imagePath, printerName, widthMm, heightMm) {
         String(widthMm),
         '-HeightMm',
         String(heightMm),
+        '-Copies',
+        String(copyCount),
         '-LogPath',
         logPath,
       ],
@@ -696,6 +704,7 @@ async function printLabelPayload(payload) {
     widthMm,
     heightMm,
     dpi = 203,
+    copies = 1,
     deviceName = '',
     silent = false,
   } = payload
@@ -703,12 +712,14 @@ async function printLabelPayload(payload) {
   const pageW = Number(widthMm)
   const pageH = Number(heightMm)
   const printDpi = Number(dpi) || 203
+  const copyCount = Math.min(999, Math.max(1, Math.floor(Number(copies)) || 1))
   const logPath = getPrintLogPath()
 
   appendPrintLog('========== print-label start ==========', {
     widthMm: pageW,
     heightMm: pageH,
     dpi: printDpi,
+    copies: copyCount,
     deviceName,
     silent,
     dataUrlBytes: dataUrl ? dataUrl.length : 0,
@@ -755,8 +766,8 @@ async function printLabelPayload(payload) {
         )
       }
 
-      appendPrintLog('selected printer', { printer })
-      await runPowershellPrint(tmpPng, printer, pageW, pageH)
+      appendPrintLog('selected printer', { printer, copies: copyCount })
+      await runPowershellPrint(tmpPng, printer, pageW, pageH, copyCount)
       appendPrintLog('print-label success gdi-fullbleed')
       return { ok: true, cancelled: false, method: 'gdi-fullbleed', logPath }
     }
@@ -766,6 +777,7 @@ async function printLabelPayload(payload) {
       pageW,
       pageH,
       printDpi,
+      copies: copyCount,
       deviceName,
       silent,
     })
@@ -799,6 +811,7 @@ async function printViaElectronFallback({
   pageW,
   pageH,
   printDpi,
+  copies = 1,
   deviceName,
   silent,
 }) {
@@ -840,6 +853,7 @@ img{position:absolute;left:0;top:0;width:${pageW}mm!important;height:${pageH}mm!
     printBackground: true,
     margins: { marginType: 'none' },
     scaleFactor: 100,
+    copies: Math.min(999, Math.max(1, Math.floor(Number(copies)) || 1)),
     pageSize: { width: micronsW, height: micronsH },
     dpi: { horizontal: printDpi, vertical: printDpi },
   }
