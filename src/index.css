@@ -1896,7 +1896,7 @@ body.table-moving * {
 
 .table-el .table-cell {
   overflow: hidden;
-  cursor: var(--cursor-cross);
+  cursor: default;
   word-break: break-word;
 }
 
@@ -1924,6 +1924,7 @@ body.table-moving * {
 .table-el .table-cell.editing {
   outline: none;
   box-shadow: inset 0 0 0 var(--ui-stroke) #3b82f6;
+  cursor: text;
 }
 
 .table-el .cell-inner {
