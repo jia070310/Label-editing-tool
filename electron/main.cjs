@@ -977,6 +977,31 @@ app.whenReady().then(() => {
     const q = String(text || '').trim()
     if (!q) return { ok: false, error: 'empty' }
 
+    // 与渲染进程一致：计量单位先换成英文简称，避免「尺」被译成 foot/feet
+    const prepared = q
+      .replace(/[/／]\s*尺/g, '/ft')
+      .replace(/(\d+(?:\.\d+)?)\s*尺(?!子)/g, '$1 ft')
+      .replace(/[/／]\s*米(?![厘毫])/g, '/m')
+      .replace(/(\d+(?:\.\d+)?)\s*米(?![厘毫])/g, '$1 m')
+      .replace(/[/／]\s*厘米/g, '/cm')
+      .replace(/(\d+(?:\.\d+)?)\s*厘米/g, '$1 cm')
+      .replace(/[/／]\s*毫米/g, '/mm')
+      .replace(/(\d+(?:\.\d+)?)\s*毫米/g, '$1 mm')
+
+    const normalizeEn = (raw) =>
+      String(raw || '')
+        .replace(/[/／]\s*feet?\b/gi, '/ft')
+        .replace(/\b(\d+(?:\.\d+)?)\s*\/\s*feet?\b/gi, '$1/ft')
+        .replace(/\b(\d+(?:\.\d+)?)\s+feet?\b/gi, '$1 ft')
+        .replace(/\bper\s+feet?\b/gi, '/ft')
+        .replace(/\bchi\b/gi, 'ft')
+        .replace(/[/／]\s*metres?\b/gi, '/m')
+        .replace(/[/／]\s*meters?\b/gi, '/m')
+        .replace(/[/／]\s*centimet(?:re|er)s?\b/gi, '/cm')
+        .replace(/[/／]\s*millimet(?:re|er)s?\b/gi, '/mm')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+
     const fetchJson = async (url, timeoutMs = 10000) => {
       const ctrl = new AbortController()
       const timer = setTimeout(() => ctrl.abort(), timeoutMs)
@@ -997,7 +1022,7 @@ app.whenReady().then(() => {
           sl: 'zh-CN',
           tl: 'en',
           dt: 't',
-          q,
+          q: prepared,
         })
       const data = await fetchJson(gUrl)
       if (Array.isArray(data) && Array.isArray(data[0])) {
@@ -1007,7 +1032,7 @@ app.whenReady().then(() => {
             parts.push(chunk[0])
           }
         }
-        const translated = parts.join('').trim()
+        const translated = normalizeEn(parts.join(''))
         if (translated) {
           return { ok: true, text: translated, provider: 'google' }
         }
@@ -1017,12 +1042,10 @@ app.whenReady().then(() => {
       try {
         const mUrl =
           'https://api.mymemory.translated.net/get?' +
-          new URLSearchParams({ q, langpair: 'zh-CN|en' })
+          new URLSearchParams({ q: prepared, langpair: 'zh-CN|en' })
         const data = await fetchJson(mUrl, 12000)
         if (data?.responseStatus === 200) {
-          const translated = String(
-            data.responseData?.translatedText || '',
-          ).trim()
+          const translated = normalizeEn(data.responseData?.translatedText)
           if (translated) {
             return { ok: true, text: translated, provider: 'mymemory' }
           }

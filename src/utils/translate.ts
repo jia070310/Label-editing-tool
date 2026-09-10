@@ -68,9 +68,41 @@ export function removeTranslationFromCell(content: string): string {
   return [chinese, ...rest].join('\n')
 }
 
-const CACHE_KEY = 'lemon-label-translate-cache-v1'
+const CACHE_KEY = 'lemon-label-translate-cache-v2'
 const CACHE_MAX = 800
 const memoryCache = new Map<string, string>()
+
+/**
+ * 标签常用计量单位：翻译前把中文单位换成英文简称，
+ * 避免机翻把「尺」有时译成 foot、有时译成 feet。
+ */
+function prepareZhForTranslate(text: string): string {
+  return text
+    .replace(/[/／]\s*尺/g, '/ft')
+    .replace(/(\d+(?:\.\d+)?)\s*尺(?!子)/g, '$1 ft')
+    .replace(/[/／]\s*米(?![厘毫])/g, '/m')
+    .replace(/(\d+(?:\.\d+)?)\s*米(?![厘毫])/g, '$1 m')
+    .replace(/[/／]\s*厘米/g, '/cm')
+    .replace(/(\d+(?:\.\d+)?)\s*厘米/g, '$1 cm')
+    .replace(/[/／]\s*毫米/g, '/mm')
+    .replace(/(\d+(?:\.\d+)?)\s*毫米/g, '$1 mm')
+}
+
+/** 纠正机翻残留的 foot/feet 等单位写法 */
+function normalizeLabelEnglish(text: string): string {
+  return text
+    .replace(/[/／]\s*feet?\b/gi, '/ft')
+    .replace(/\b(\d+(?:\.\d+)?)\s*\/\s*feet?\b/gi, '$1/ft')
+    .replace(/\b(\d+(?:\.\d+)?)\s+feet?\b/gi, '$1 ft')
+    .replace(/\bper\s+feet?\b/gi, '/ft')
+    .replace(/\bchi\b/gi, 'ft')
+    .replace(/[/／]\s*metres?\b/gi, '/m')
+    .replace(/[/／]\s*meters?\b/gi, '/m')
+    .replace(/[/／]\s*centimet(?:re|er)s?\b/gi, '/cm')
+    .replace(/[/／]\s*millimet(?:re|er)s?\b/gi, '/mm')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
 
 function loadDiskCache(): void {
   if (memoryCache.size > 0) return
@@ -203,9 +235,10 @@ export async function translateZhToEn(text: string): Promise<string> {
   if (!hasChinese(q)) throw new Error('请先输入中文内容')
 
   const hit = cacheGet(q)
-  if (hit) return hit
+  if (hit) return normalizeLabelEnglish(hit)
 
-  const translated = await translateRemote(q)
+  const prepared = prepareZhForTranslate(q)
+  const translated = normalizeLabelEnglish(await translateRemote(prepared))
   cacheSet(q, translated)
   return translated
 }
